@@ -162,6 +162,34 @@ wird nie geglaubt.
    Flanken-Zähler im UI muss bei 0 bleiben. Treten wieder ~12 Flanken pro Stunde auf, ist
    die alte Bedingung zurückgekommen (Signatur in „Zuletzt behoben") und es ist Code, nicht
    Hardware; die Sicherung rastet bei 5 Flanken selbst ein und schreibt dann nichts mehr.
+6. **MQTT-Ausbau vertagt (Stand 20.09.2026, Besitzer nicht vor Ort).** Der Broker ist da
+   (HA-Add-on `Mosquitto broker`, `192.168.178.126:1883` offen), anonym nimmt er nichts an,
+   und die App steht bereit (`mqtt.host/port` gesetzt, `enabled: false`). **Es fehlt allein
+   das Login.** Es ist **nicht** per HA-API zu holen — belegt am 20.09.: `/api/hassio/addons`
+   → `HTTP 401` (Add-on-Optionen liegen im Supervisor, der Token hat keine Admin-Rechte),
+   `/api/config/config_entries/entry?domain=mqtt` liefert die Integration „Mosquitto broker",
+   aber **leere `data`** (HA gibt gespeicherte Zugangsdaten nie heraus), und ein HA-Benutzer
+   als Broker-Login wäre nur als bcrypt-Hash vorhanden. Klartext gibt es nur im Add-on-UI.
+   **Wenn der Besitzer zu Hause ist:** *Einstellungen → Add-ons → Mosquitto broker →
+   Konfiguration → `logins`* nachsehen (oder einen Eintrag anlegen) und die Werte mit
+   `getpass` in `ha-app/config.json` schreiben (landet weder in der Shell-History noch im
+   Chat), dann `mqtt.enabled: true`, `systemctl --user restart evcharge-wt.service`, und in
+   HA prüfen, ob `sensor.ev_charging_power` & Co. auftauchen.
+7. **Der evcc-Add-on ist in HA noch installiert** (`update.evcc_solar_charging_update`) und
+   sollte dort deinstalliert werden — er darf nie wieder starten. Er ist auch die Quelle der
+   toten `sensor.evcc_*`-Entities im Dashboard (MQTT-Discovery aus der stillgelegten Zeit).
+8. **Dashboard-Zeilen umstellen** (nach Punkt 6): die 34 toten `sensor.evcc_*`-Zeilen im
+   HA-POWER-DASHBOARD auf die dann vorhandenen Entities der eigenen App zeigen lassen.
+9. **Auch der Deye-Poller soll später auf MQTT umgestellt werden** (Wunsch des Besitzers,
+   20.09.2026). Heute publiziert er über HA selbst (`POST /api/services/mqtt/publish`,
+   Token aus `~/.hermes/.env`, Routinen in `powerdash/deye_pv.py` und `deye-pv-rs/src/ha.rs`)
+   — das braucht keinen Broker-Login, kann aber nur senden. Umstellung, wenn der Broker-Login
+   zugänglich ist (Punkt 6), damit im Haus **ein** Muster für alle Veröffentlicher gilt.
+   Der dafür vorbereitete, wieder verworfene Weg (HA-REST-Publish, read-only, kein
+   Broker-Login) liegt geparkt in `ha-app/local-tools/mqtt-via-ha-rest/` — er wurde nicht
+   genommen, weil damit die **Steuerung aus HA heraus verloren geht** (die App kann über
+   diesen Weg nur senden, nicht empfangen; Modus, Stromgrenzen und SOC-Schwellen leben in
+   der eigenen Web-UI und über `set/#`-Topics).
 
 ## Bekannte Messanomalien der Umgebung
 
@@ -240,13 +268,21 @@ jetzt ebenfalls in `local-tools/` (nicht versioniert) — evcc läuft nie wieder
 `curl -s 127.0.0.1:7080/api/state` (Lage) · `tests/` der App · `curl -s 127.0.0.1:1504/status`
 (Proxy) · `make check` im Proxy-Repo (Konformität gegen den Stub).
 
-**Push**, sobald die vier leeren Repos auf GitHub existieren:
+**Stand 20.09.2026: alle vier sind veröffentlicht und die Historie ist geglättet** — je
+**ein** Commit pro Repo (`evcharge a381fdb`, `modbus-proxy-rs 8fbd4c1`, `ev-charger-wt-ha
+a4d0806`, `ha-power-dashboard e3884ee`), gepusht mit `--force` nach Orphan-Branch-Umschrieb,
+alte Objekte lokal per `reflog expire` + `gc --prune=now` entfernt. `modbus-proxy-rs` wurde
+am 20.09. **gelöscht und leer neu angelegt** und frisch gepusht, weil sein erster
+Import-Commit beim Server noch per exaktem SHA abrufbar war; danach war er es nicht mehr.
+Nachprüfen lässt sich so etwas nur mit dem exakten Hash:
 
 ```sh
-for r in modbus-proxy-rs evcharge; do git -C /home/adermake/EV-CHARGER-WT-HA/$r push -u origin main; done
-git -C /home/adermake/HA-POWER-DASHBOARD push -u origin main
-git -C /home/adermake/EV-CHARGER-WT-HA push -u origin main
+git -C /home/adermake/EV-CHARGER-WT-HA/modbus-proxy-rs fetch --depth=1 origin 778db32 && echo "noch da" || echo "weg"
 ```
+
+Ein frischer Klon des Repos muss außerdem **selbst bauen und testen**:
+`git clone … && cd modbus-proxy-rs && cargo test --offline` → 12 Tests, 0 Fehler (das Repo
+ist dependency-frei).
 
 ## Wo die Wahrheit liegt
 
