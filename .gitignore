@@ -1,0 +1,25 @@
+# The two apps live in their own repositories; this one carries the project docs
+# and the Python reference implementation of the proxy.
+/modbus-proxy-rs/
+/ha-app/
+
+# Run artifacts
+/logs/
+*.log
+*.stdout
+
+# Python helper tools in this repo
+__pycache__/
+*.pyc
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Local notes that must never be published
+NOTES-local.md
+
+# Werkzeuge der früheren Referenz-Installation, nur lokal
+local-tools/

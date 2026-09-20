@@ -1,0 +1,267 @@
+# EV-CHARGER-WT-HA — Zustand, Regeln, offene Punkte
+
+Stand: 2026-09-19. **Bei Widersprüchen gilt der Code und die Tests, nicht diese Datei.**
+Diese Datei ist die Übergabe: sie sagt, was läuft, warum es so ist, was als Nächstes ansteht.
+
+## Worum es geht (und warum)
+
+Der Besitzer hat den früher eingesetzten Fremd-Controller (Docker-Container `evcc`) durch
+eigene, unabhängige Apps ersetzt — er wird **nicht mehr gestartet**, er würde um die Wallbox
+kämpfen. Grund (wörtlich): er will
+nicht, dass seine Apps von etwas abhängen — "in diesem Fall von Python. if the system
+changes, it can blow up my setup". Endziel: **statische Rust-Binaries mit minimalen
+Abhängigkeiten**. Die Python-Versionen bleiben unverändert bestehen; Rust ist additiv, und
+portiert wird Schicht für Schicht, sobald eine Schicht eingefroren ist. Der
+Steuerungsplan ist bewusst eingefroren ("i probably will never need the plan - so let it
+as it is now").
+
+Arbeitsweise, die er erwartet: er rechnet selbst nach und hakt nach ("bist du sicher?"),
+will Messwert und Vermutung getrennt, schreibt Deutsch und erwartet knappe, belegte
+Antworten mit konkreten Zahlen. Vorgaben für dieses Projekt:
+
+* **Keine zusätzliche Poll-Last auf dem Wechselrichter (SE5000H, 192.168.178.84:1502).**
+  Diagnose durch Beobachtung, nicht durch mehr Anfragen.
+* Ein Gerät, das nur eine Sitzung verträgt, hat **genau eine** Sitzung (SE-Wechselrichter,
+  Deye-Logger). Nie zwei Clients gleichzeitig.
+* An der Wallbox wird **nur `amx` geschrieben, nie `amp`** ("amp will turn the flash of
+  the wb to trash very soon").
+* Handmodus = **null Schreibzugriffe**.
+* Änderungen an der echten Anlage vorher ankündigen, danach den Zustand belegen.
+* Elektroinstallation wird nicht zu Testzwecken geschaltet — Sicherungen werden mit
+  eingeschleusten Zeiten/Stubs getestet, nicht am Auto.
+
+## Was jetzt läuft
+
+| Was | Unit / Weg | Zustand |
+|---|---|---|
+| Laderegler | `systemctl --user status evcharge-wt.service` | aktiv, Web-UI `127.0.0.1:7080`, Intervall 30 s (Auto dran) / 300 s (leer) |
+| Modbus-Proxy (Rust) | `systemctl --user status muxproxy-rs.service` | aktiv, hört `0.0.0.0:1503`, Status `:1504`, Build `abda451e49a433ff0b42df8635e512491dba3b0f` |
+| Deye-PV-Logger (Rust) | `powerdash-deye-pv-rs` | aktiv, anderes Gerät, nicht Teil der Ladekette |
+| evcc | Docker-Container | **stillgelegt** — nicht neu starten; der Laderegler steuert die Wallbox |
+
+Adressen: Wallbox go-e `192.168.178.22` (FW 041.0, HTTP-API v1) · Wechselrichter
+`192.168.178.84:1502` · Proxy-Adresse für Consumer `192.168.178.44:1503` · HA
+`http://homeassistant:8123` (HAOS 2026.9.2).
+
+Der Lesepfad zum Wechselrichter hat sich als empfindlich erwiesen und ist eingefroren:
+**drei kleine Fenster pro Zyklus** — `(40071,32)` Wechselrichter, `(40190,53)` Zähler,
+`(57716,18)` Vendor, zusammen 103 Register. Der Bereich `40111..40189` wird bewusst
+**nie** angefasst. Vorbild war die alte openHAB-Konfiguration (`se4k.things`): zwei
+kleine Fenster alle 10 s, nie ein Register einzeln.
+
+Der Proxy gibt **keine abgelaufenen Frames** zurück (so entschieden). Innerhalb von
+`ondemand_ttl` (10 s) teilen sich zwei Leser einen Geräte-Read; danach ist der Wert
+verfallen, und wenn nichts Neues gelesen werden konnte, bekommt der Client den **Fehler**
+(Exception `0x0B`) statt eines alten Frames — der sähe auf der Leitung wie eine frische
+Messung aus und die Lade-App hätte keine Chance, ihn zu erkennen. Folge für die App: ein
+fehlgeschlagener Read ergibt gar keine Entscheidung (kein Zyklus), und eine laufende
+Ladung wird nach `site_stale_s` (600 s) beendet — nie auf Basis alter Zahlen gestartet oder
+nachgeregelt. Rust-Proxy und Python-Referenz verhalten sich gleich, der Konformitätstest
+pinnt es (`an_expired_read_is_reported_instead_of_served_stale`).
+
+Die Wallbox wird über die **gemessenen** `nrg`-Offsets gelesen (FW 041.0, die Doku liegt
+um eine Stelle daneben): `nrg[0..2]` Volt · `nrg[3]` konstante 1 · `nrg[4..6]` Ströme
+(0,1 A) · `nrg[7..9]` Leistungen (0,1 kW) · `nrg[11]` Gesamtleistung (10 W) · `nrg[12..14]`
+Leistungsfaktor. Phasenzahl kommt aus den Strömen; `pha` (63) ist Kontaktorbestückung und
+wird nie geglaubt.
+
+## Regeln im Regler (mit Begründung)
+
+* **Überschuss** = Netz-Leistung (vorzeichenbehaftet) + Auto-Leistung − Batterie-Abgabe,
+  dazu die Batterie-**Aufnahme**, sobald der Akku `priority_soc` erreicht hat. Keine
+  Grundlast-Konstante: die Hauslast steht schon im Zählerwert, eine zweite Subtraktion
+  zählte sie doppelt und hielt die Ladung ~1 A zu niedrig (`residual_power_w` ist eine
+  bewusste Reserve und hier 0). Die Abgabe bleibt immer abgezogen — das Auto entlädt
+  niemals die Hausbatterie.
+* **Drei Bänder für die Batterie** (so entschieden; Verhalten aus einer generischen EV-Ladeapp übernommen):
+  **unter `priority_soc` (55 %)** hat die Batterie Vorrang: ihr Ladeanteil bleibt bei ihr,
+  das Auto lädt aus dem echten Export (in dem der Anteil schon fehlt, der Zähler misst ihn
+  mit) — es wird aber **nicht** gesperrt. Ein grauer Tag mit halbvollem Akku lädt das Auto
+  also, statt die Sonne ins Netz zu schieben. Zusätzlich stoppt die Ladung, wenn die
+  Batterie das Auto speist und nichts exportiert wird.
+  **ab `priority_soc`** wird der Ladeanteil der Batterie aufgeschlagen: das Auto überholt
+  die Batterie beim Laden, der Akku bleibt auf seinem Stand statt auf 100 % zu laufen.
+  Mehr als `max_current` (14 A) kann das Auto nicht übernehmen — der Rest geht weiter in
+  den Akku bzw. ins Netz.
+  **über `buffer_soc` (80 %)** darf die Reserve oberhalb des Buffers eine **laufende**
+  Ladung tragen: pv/minpv hält das Auto bei 6 A, statt bei nachlassender Sonne
+  abzuschalten; das geht so lange, bis der Akku wieder auf 80 % ist. Eine Ladung wird
+  **nie** aus der Batterie gestartet.
+  Die Abgabe der Batterie bleibt sonst abgezogen — das Auto entlädt die Hausbatterie nicht.
+  `battery_boost` und `buffer_start_soc` sind **entfernt** (Reste der alten
+  Buffer-Sperre; für "Akku ins Auto entladen" nimmt der Besitzer den Modus `manual`).
+  Alles drei steht im UI im Tooltip der Zeile "battery" und an den Feldern buffer/priority SOC.
+* **Strom folgt dem Überschuss sofort** im Bereich 6 A…Maximum; Hysterese gibt es nur an
+  der Untergrenze von 6 A (Abschalt-Gnadenfrist), weil man darunter nicht laden kann.
+* **Hausbatterie-Wächter hängt an der Entscheidung, nicht am Modusnamen**: beim
+  Überschussladen wird unter `buffer_soc` nicht geladen (und der Grund angezeigt); im
+  Billigfenster ist die Batterie nicht das Thema, weil dort das Netz zahlt.
+* **Billigzeitfenster (`cheap_hours`)**: im Fenster ist alles egal — Maximum und
+  durchgehend bis zum Ende, kein Warten, keine Batteriesperre, kein Herunterregeln, keine
+  Zählerfrische-Prüfung. Am Ende **kein** Abschalten, sondern nahtlose Übergabe an die
+  PV-Regeln; die gelten davor, währenddessen und danach, damit der Modus dauerhaft an
+  bleiben kann. Eine laufende Ladung muss im Fenster **gehalten** werden — genau das war
+  der Fehler, der eine Nacht lang alle ~5 Minuten geschaltet hat (69 Flanken).
+  **Behoben am 19.09. um 07:46** (`controller.py`: Zweig ohne `and not charger.charging`);
+  drei Checks in `test_controller.py` pinnen es („a running charge in the window stays at
+  maximum", „no dwell timer or battery block interrupts it", „and it emits no on/off
+  edge"). In `pv`/`minpv` bleibt das Fenster wirkungslos — nachts passiert dort nichts,
+  und das ist so gewollt.
+* **Phasen**: nach dem Anstecken wird **1 Phase** angenommen; der Zähler wird erst
+  geglaubt, wenn ~20 s Strom geflossen ist, und dann der **höchste** gesehene Wert bis zum
+  Abstecken gemerkt.
+* **Sicherung**: Die App zählt die `alw`-Flanken, die die Wallbox wirklich gesehen hat,
+  gleitend über 30 Minuten, zeigt sie im UI. Bei 5 rastet eine **Störung** ein: Ladung
+  einmal einschalten, danach **keine** Schreibzugriffe mehr. Grund: "OBC eines Autos zu
+  reparieren kostet Tausende Euros". Freigabe nur von Hand (Knopf `Clear fault`), nie
+  automatisch — die Ursache kann weiter bestehen. So entschieden: **kein** Freigeben
+  durch einen Neustart.
+* **Hauszeit ist nicht Hostzeit**: Der Host läuft UTC, gewünschte Wanduhrzeiten sind in
+  `Europe/Berlin` ausgedrückt (`Settings.timezone`, IANA-Name, sommerzeitfest).
+
+## Zuletzt behoben (19.09.2026)
+
+* **Billigfenster stoppte laufende Ladungen** (`controller.py`). Vorher lautete der Zweig
+  `if mode == cheap_hours and cheap_now and not charger.charging`: sobald das Auto wirklich
+  Strom zog, fiel es in die Überschusslogik, wurde auf 6 A zurückgenommen und nach der
+  180-s-Gnade abgeschaltet — worauf das Fenster es 60 s später neu startete. **Signatur der
+  Nacht 18./19.09. (00:00–03:25 lokal): 40× `alw=0` und 41× `alw=1` im Log, Begründung
+  pendelte zwischen `cheap tariff window` und `surplus -1117 W below minimum (4140 W, 3p)`;
+  je Runde 31 s bei 14 A, 181 s bei 6 A, 88 s aus.** Jetzt hält der Zweig jede laufende
+  Ladung bis zum Fensterende (Kommentar im Code erklärt es, die drei Checks aus der Regel
+  oben pinnen es). Live-Beleg für „der Fix läuft": der Prozessstart muss **jünger** sein als
+  `controller.py` — `ps -o lstart= -p $(systemctl --user show evcharge-wt.service -p MainPID --value)`.
+* **Absturzschleife der Lade-App** (11:13–15:19 lokal blind, **1182 Neustarts à ~12 s**,
+  Port 7080 tot). `proxy.py:summary()` normalisierte `now` nicht, während `main.py` es als
+  `proxy_summary(pstats, failures=…)` **ohne** Uhr aufruft. Die Zeile läuft nur, wenn der
+  Proxy einen Fehler-Zeitstempel meldet — der neue Proxy-Build (09:59) liefert
+  `last_upstream_error_at`, der erste Upstream-Fehler um 11:13 machte daraus `float(None)`
+  in jedem Zyklus. Gefixt durch Normalisieren in `summary()`; abgedeckt durch
+  „the production call shape: summary() without an explicit clock" in `test_proxy_card.py`
+  **plus** einen Live-Check gegen `/status`. Beide Zustände wurden belegt: Fix raus → Test
+  bricht ab, Fix rein → grün. **Lehre für die Zukunft: nach jedem Rebuild des Proxys den
+  Feldsatz von `/status` prüfen und die App-Tests laufen lassen** — ein neues Feld ist ein
+  neuer Codepfad, und auch ein reiner Anzeigepfad reißt die Steuerung mit.
+
+## Offene Punkte
+
+2. Das HA-Lovelace-Dashboard (`/strom-verbrauch`) wurde **nie** im HA selbst visuell
+   geprüft (Login-Wand); Ersatz ist `docs/preview.html`. Das ist die größte offene
+   Unsicherheit im Dashboard-Teil.
+3. Der **Rust-Port der Lade-App ist nicht begonnen** — sie ist der nächste Kandidat,
+   aber erst, wenn ihre Logik stillsteht (Plan bewusst unverändert gelassen).
+4. **SolarEdge meldet oberhalb ~4600 W einphasig zu hoch (Spitze 5533 W)** — Verdacht des
+   Besitzers: das war eine falsch erkannte Phasenzahl, nicht der Wechselrichter. Die
+   Phasenroutine ist seitdem strenger (erst nach ~20 s fließendem Strom geglaubt, dann der
+   höchste Wert bis zum Abstecken; `phases_checked=false`, solange kein Strom fließt) →
+   **beobachten**, ob der Wert wiederkommt.
+5. **Das Halten im Billigfenster ist nur durch Tests belegt, nie nachts am echten Auto
+   gesehen.** Beim nächsten Einsatz von `cheap_hours` (Winter; der Modus steht derzeit auf
+   `pv`, dort ist das Fenster wirkungslos) zu erwarten: **genau eine** `alw`-Flanke beim
+   Start, danach 0 Flanken bis zum Fensterende, Ladung durchgehend auf `max_current` — der
+   Flanken-Zähler im UI muss bei 0 bleiben. Treten wieder ~12 Flanken pro Stunde auf, ist
+   die alte Bedingung zurückgekommen (Signatur in „Zuletzt behoben") und es ist Code, nicht
+   Hardware; die Sicherung rastet bei 5 Flanken selbst ein und schreibt dann nichts mehr.
+
+## Bekannte Messanomalien der Umgebung
+
+Nicht unsere Baustelle, aber beim Lesen von Zahlen bedenken: `sensor.garage_pv_energie`
+fällt 8× aus; `sensor.evcc_battery_power` ist `unavailable` (Rest der stillgelegten Steuerung, in HA `restored`); der Deye-Wert ist ~4 min
+alt; `ElektroHeizungKeller` + Sensoren `unavailable`; der Rust-Deye-Poller kann kein
+https zur HA-Verbindung.
+
+## Wie man prüft (erprobte Befehle)
+
+```sh
+cd /home/adermake/EV-CHARGER-WT-HA/ha-app
+for t in test_safety test_controller test_phase_probe test_service_smoke test_proxy_card \
+         test_goe_driver test_ha_read test_site_cadence test_cheap_hours; do
+  python3 tests/$t.py; done
+python3 /tmp/health.py                      # Live-Lage in ~10 Zeilen
+curl -s 127.0.0.1:7080/api/state            # dieselbe Lage als JSON
+curl -s 127.0.0.1:1504/status               # Proxy-Statistik
+cd ../modbus-proxy-rs && make check         # cargo + Konformität + Kreuzvergleich + Differential + Produktivconfig
+```
+
+Wichtig beim Installieren des Proxys: `make static install` scheitert mit "Text file
+busy", solange er läuft → **stoppen, installieren, starten**. Und: installierte Binärdatei
+gegen den Build prüfen (`sha256sum bin/muxproxy`), nicht annehmen.
+
+## Rollback auf den direkten Weg (Consumer ohne Proxy)
+
+```sh
+systemctl --user disable --now muxproxy-rs.service
+```
+
+Danach beim Consumer (Laderegler bzw. wer auch immer die Meter liest) die Meter-Konfiguration
+zurück auf `192.168.178.84:1502` zeigen lassen und ihn neu starten — **Consumer vorher
+stoppen und alle Meter in einem Schritt umstellen**, sonst validiert er eine halb geänderte
+Konfiguration gegen das Gerät und speichert sie nicht.
+
+Das frühere Werkzeug dafür (`set_evcc_meter_host.py`, schrieb direkt in die SQLite des alten
+Controllers) ist aus dem Proxy-Repo entfernt, weil es ausschließlich ihn bediente; es liegt lokal unter
+`modbus-proxy-rs/local-tools/` und wird nicht versioniert.
+
+## Repositories (öffentlich, MIT)
+
+Vier Repos, alle **an Ort und Stelle** initialisiert (`git init` in den bestehenden
+Verzeichnissen), damit die laufenden Units ihre Pfade behalten. Branch `main`, Identität nur
+lokal pro Repo (`trwa <me@home>` — verknüpft die Commits *nicht* mit dem GitHub-Konto),
+Remote vorbereitet. **Alle vier sind seit 20.09.2026 öffentlich auf GitHub** (Account
+`machtnichts`, MIT, Copyright `nixda`):
+
+| Repo | Pfad | Commit | Dateien |
+|---|---|---|---|
+| `modbus-proxy-rs` | `modbus-proxy-rs/` | `778db32` | 30 |
+| `evcharge` | `ha-app/` | `a381fdb` | 35 |
+| `ha-power-dashboard` | `~/HA-POWER-DASHBOARD` | `e3884ee` | 72 |
+| `ev-charger-wt-ha` | dieses Verzeichnis | `ff71f9f` | 26 |
+
+Verifiziert per frischem Klon von GitHub (Dateibestand, Lizenz, keine unerwünschten Dateien);
+`evcharge` zusätzlich mit komplettem Testlauf aus dem Klon (76 Checks grün). Rust-Builds aus
+dem Klon wurden **nicht** ausgeführt — dafür fehlt hier ein `cargo build`-Lauf, die
+Konformitätstests im Repo selbst bleiben die Referenz.
+
+Weitere Änderungen wie gewohnt: `git add` / `git commit` / `git push` in dem jeweiligen
+Verzeichnis; die Arbeitskopien verfolgen `origin/main`.
+
+**Bewusst nicht im Repo**: `bin/` (gebautes Binary), `target/`, `.venv/`, `logs/`,
+`__pycache__/`, die Live-`config.json` des Reglers (stattdessen `config.example.json`) und
+`NOTES-local.md` in allen vier Repos.
+
+**evcc-Bezüge**: aus dem **Laderegler** vollständig entfernt (Kommentare, Docstrings,
+UI-Tooltips, Test-Labels); die Substanz — drei Batterie-Bänder, `bufferSoc`/`prioritySoc`,
+das 3-Phasen-Minimum — steht in `ha-app/NOTES-local.md` (nicht committet). Der **Proxy** wurde
+ebenso generalisiert („Modbus consumer", `config/muxproxy.json`, die drei evcc-Werkzeuge nach
+`local-tools/`), und die **Werkzeuge dieses Repos**, die evccs API oder CSVs brauchten, liegen
+jetzt ebenfalls in `local-tools/` (nicht versioniert) — evcc läuft nie wieder.
+
+**Verifikation läuft ab jetzt gegen die eigene App**, nicht gegen einen Fremd-Controller:
+`curl -s 127.0.0.1:7080/api/state` (Lage) · `tests/` der App · `curl -s 127.0.0.1:1504/status`
+(Proxy) · `make check` im Proxy-Repo (Konformität gegen den Stub).
+
+**Push**, sobald die vier leeren Repos auf GitHub existieren:
+
+```sh
+for r in modbus-proxy-rs evcharge; do git -C /home/adermake/EV-CHARGER-WT-HA/$r push -u origin main; done
+git -C /home/adermake/HA-POWER-DASHBOARD push -u origin main
+git -C /home/adermake/EV-CHARGER-WT-HA push -u origin main
+```
+
+## Wo die Wahrheit liegt
+
+* `README.md` (Projekt), `docs/INSTALL.md`, `docs/REGISTERS.md` (Registerkarte, 203 =
+  Netz-Zähler), `docs/preview.html` (Dashboard-Vorschau).
+* Logs: `logs/evcharge.log` (Herzschläge + Schalt-Schreibzugriffe), `logs/evcharge.stdout`
+  (Tracebacks). Der Proxy schreibt nach stdout in eine Datei, nicht ins Journal.
+* `ha-app/config.json` — Intervalle, Reserve, `phases`, `proxy_status`, `safety`, und die
+  persistierten Einstellungen (`.bak` bleibt erhalten).
+* Skills (Prozedurwissen, laden sich bei Bedarf): `ev-charging-control`,
+  `modbus-single-client-proxy`, `goe-charger-http-api`, `solaredge-sunspec-modbus`,
+  `home-assistant-integration`, `port-verification`.
+
+## Die eine Regel für neue Sitzungen
+
+Erst diese Datei lesen, dann `python3 /tmp/health.py`, dann erst etwas ändern. Der
+Wechselrichter ist empfindlich, das Auto teuer, und der Besitzer merkt es, wenn Zahlen
+nicht belegt sind.
