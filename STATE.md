@@ -91,8 +91,12 @@ wird nie geglaubt.
   `battery_boost` und `buffer_start_soc` sind **entfernt** (Reste der alten
   Buffer-Sperre; für "Akku ins Auto entladen" nimmt der Besitzer den Modus `manual`).
   Alles drei steht im UI im Tooltip der Zeile "battery" und an den Feldern buffer/priority SOC.
-* **Strom folgt dem Überschuss sofort** im Bereich 6 A…Maximum; Hysterese gibt es nur an
-  der Untergrenze von 6 A (Abschalt-Gnadenfrist), weil man darunter nicht laden kann.
+* **Strom folgt dem Überschuss sofort** im Bereich 6 A…Maximum. Hysterese gibt es nur an
+  der Untergrenze, und dort **asymmetrisch mit 300 W** (seit 21.09.2026): bei ausgeschalteter
+  Wallbox braucht ein **Start** die Untergrenze **+300 W** (`enable_threshold_w`), eine
+  **laufende** Ladung wird bis **−300 W** darunter **gehalten** (`disable_threshold_w`) und
+  erst darunter abgeschaltet. Im Band dazwischen bleibt alles, wie es ist — das ist genau
+  das Fenster, in dem die App vorher im Minutentakt gestartet und gestoppt hat.
 * **Hausbatterie-Wächter hängt an der Entscheidung, nicht am Modusnamen**: beim
   Überschussladen wird unter `buffer_soc` nicht geladen (und der Grund angezeigt); im
   Billigfenster ist die Batterie nicht das Thema, weil dort das Netz zahlt.
@@ -110,14 +114,50 @@ wird nie geglaubt.
 * **Phasen**: nach dem Anstecken wird **1 Phase** angenommen; der Zähler wird erst
   geglaubt, wenn ~20 s Strom geflossen ist, und dann der **höchste** gesehene Wert bis zum
   Abstecken gemerkt.
-* **Sicherung**: Die App zählt die `alw`-Flanken, die die Wallbox wirklich gesehen hat,
-  gleitend über 30 Minuten, zeigt sie im UI. Bei 5 rastet eine **Störung** ein: Ladung
-  einmal einschalten, danach **keine** Schreibzugriffe mehr. Grund: "OBC eines Autos zu
-  reparieren kostet Tausende Euros". Freigabe nur von Hand (Knopf `Clear fault`), nie
-  automatisch — die Ursache kann weiter bestehen. So entschieden: **kein** Freigeben
-  durch einen Neustart.
+* **Sicherung**: Die App zählt die **Stopps** (`alw=0` nach einem `alw=1`), die die Wallbox
+  wirklich gesehen hat, gleitend über 30 Minuten, und zeigt sie im UI. Bei 5 rastet eine
+  **Störung** ein: Ladung einmal einschalten, danach **keine** Schreibzugriffe mehr. Grund:
+  "OBC eines Autos zu reparieren kostet Tausende Euros". **Nur Stopps, nicht beide
+  Richtungen** (Entscheidung des Besitzers, 21.09.2026): jeder Start ist das Gegenstück
+  eines Stopps, das Zählen beider Richtungen meldete eine unterbrochene Sitzung als zwei
+  Ereignisse und halbierte die Toleranz. `amx=`-Schreibungen zählen **nie** — Nachregeln ist
+  kein Schalten. Freigabe nur von Hand (Knopf `Clear fault`).
+  **Bekannte Abweichung:** der Zähler lebt nur im Speicher, ein Neustart des Dienstes
+  quittiert die Störung also doch — am 21.09. genau so benutzt. Der Satz „kein Freigeben
+  durch einen Neustart" ist damit **Wunsch, nicht Verhalten**; wer ihn gelten lassen will,
+  muss den Riegel persistieren (offener Punkt).
 * **Hauszeit ist nicht Hostzeit**: Der Host läuft UTC, gewünschte Wanduhrzeiten sind in
   `Europe/Berlin` ausgedrückt (`Settings.timezone`, IANA-Name, sommerzeitfest).
+
+## Zuletzt behoben (21.09.2026)
+
+* **Die App hat `alw=0` geschickt, obwohl genug Sonne da war** (`controller.py: _finalize`).
+  Gemessen am 20.09.: `11:28:36 alw=0` bei **2358 W** Überschuss, `11:30:37 alw=0` bei
+  **1901 W** — der Besitzer hat es aus der App heraus gesehen (2,85 kW Produktion bei
+  2,66 kW Verbrauch, 99 % solar+battery). Ursache: die **Anlaufverzögerung hing an
+  `charger.charging`** (ob das Auto zieht), die Schreibentscheidung aber an
+  **`charger.enabled`** (ob die Wallbox freigegeben ist). Bei einem angesteckten, aber nicht
+  ziehenden Auto (voll / Abfahrtszeit) war `charge and not charging` in **jedem** Zyklus wahr
+  → die 60-s-Gnade wurde jeden Zyklus neu aufgezogen → die Entscheidung wurde auf
+  `charge=False` gezwungen → der Schreibpfad (der gegen `enabled` vergleicht) schaltete die
+  Wallbox ab. **Ein Stopp pro Minute bei reichlich Überschuss**, fünf davon im
+  Sicherungsfenster — genau das löste die Störung aus. Beide Verzögerungen hängen jetzt an
+  derselben Größe wie der Schreibpfad (`enabled`); eine wartende Gnade schreibt **nichts**.
+  Gepinnt durch „a plugged car that is not drawing must not be stopped every cycle"
+  (10 Zyklen, 0 `alw`), „the start grace waits on the wallbox and writes nothing while it
+  waits" und „the stop grace holds first and writes exactly one stop afterwards".
+* **Hysterese 300 W an der Untergrenze** (`enable_threshold_w` / `disable_threshold_w`,
+  `controller.py: _floor_w`). `disable_threshold_w` war bis dahin **deklariert und nie
+  gelesen** — eine Einstellung, die nichts tat. Jetzt: Start ab Untergrenze **+300 W**,
+  Halten bis Untergrenze **−300 W**. Live sichtbar in der Begründung: „below minimum
+  (**1080 W**, 1p)" solange die Wallbox freigibt, „(**1680 W**, 1p)" wenn sie aus ist.
+* **Sicherung zählt nur noch Stopps** (`safety.py`) — Regel oben, `amx` zählte nie.
+* **Test-Attrappe korrigiert** (`tests/test_controller.py`): `car()` setzt `enabled` passend
+  zu `charging`. Vorher beschrieb sie Zustände, die die Hardware nicht hergibt (Strom fließt,
+  ohne dass die Wallbox freigibt) — und verdeckte damit genau diesen Fehler.
+* Live-Beleg nach dem Neustart am 21.09. 06:40: ein `amx=6` (Nachregeln beim Halten), dann
+  **genau ein** `alw=0` nach Ablauf der 180-s-Gnade, danach Ruhe; Zähler 0/5, keine Störung.
+  Stand: **11 Suiten grün** (`test_controller` 91, `test_safety` 29 Prüfungen).
 
 ## Zuletzt behoben (19.09.2026)
 
@@ -157,11 +197,11 @@ wird nie geglaubt.
    **beobachten**, ob der Wert wiederkommt.
 5. **Das Halten im Billigfenster ist nur durch Tests belegt, nie nachts am echten Auto
    gesehen.** Beim nächsten Einsatz von `cheap_hours` (Winter; der Modus steht derzeit auf
-   `pv`, dort ist das Fenster wirkungslos) zu erwarten: **genau eine** `alw`-Flanke beim
-   Start, danach 0 Flanken bis zum Fensterende, Ladung durchgehend auf `max_current` — der
-   Flanken-Zähler im UI muss bei 0 bleiben. Treten wieder ~12 Flanken pro Stunde auf, ist
-   die alte Bedingung zurückgekommen (Signatur in „Zuletzt behoben") und es ist Code, nicht
-   Hardware; die Sicherung rastet bei 5 Flanken selbst ein und schreibt dann nichts mehr.
+   `pv`, dort ist das Fenster wirkungslos) zu erwarten: **ein** Start beim Öffnen, danach
+   **0 Stopps** bis zum Fensterende, Ladung durchgehend auf `max_current` — der Stopp-Zähler
+   im UI muss bei 0 bleiben. Treten wieder ~12 Stopps pro Stunde auf, ist die alte Bedingung
+   zurückgekommen (Signatur in „Zuletzt behoben") und es ist Code, nicht Hardware; die
+   Sicherung rastet bei 5 Stopps selbst ein und schreibt dann nichts mehr.
 6. **MQTT-Ausbau vertagt (Stand 20.09.2026, Besitzer nicht vor Ort).** Der Broker ist da
    (HA-Add-on `Mosquitto broker`, `192.168.178.126:1883` offen), anonym nimmt er nichts an,
    und die App steht bereit (`mqtt.host/port` gesetzt, `enabled: false`). **Es fehlt allein
@@ -190,6 +230,12 @@ wird nie geglaubt.
    genommen, weil damit die **Steuerung aus HA heraus verloren geht** (die App kann über
    diesen Weg nur senden, nicht empfangen; Modus, Stromgrenzen und SOC-Schwellen leben in
    der eigenen Web-UI und über `set/#`-Topics).
+10. **Der Sicherungs-Riegel überlebt keinen Neustart.** STATE.md verlangt „kein Freigeben
+    durch einen Neustart", der Zähler lebt aber nur im Speicher (`SwitchCounter`), also
+    quittiert `systemctl --user restart evcharge-wt.service` die Störung — am 21.09. genau so
+    benutzt, um nach dem Fix weiterzumachen. Wer den Satz gelten lassen will, muss den Riegel
+    persistieren (kleine Datei neben `config.json`, beim Start einlesen). Entscheidung des
+    Besitzers steht aus.
 
 ## Bekannte Messanomalien der Umgebung
 
