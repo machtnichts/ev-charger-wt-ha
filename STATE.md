@@ -121,11 +121,12 @@ wird nie geglaubt.
   Richtungen** (Entscheidung des Besitzers, 21.09.2026): jeder Start ist das Gegenstück
   eines Stopps, das Zählen beider Richtungen meldete eine unterbrochene Sitzung als zwei
   Ereignisse und halbierte die Toleranz. `amx=`-Schreibungen zählen **nie** — Nachregeln ist
-  kein Schalten. Freigabe nur von Hand (Knopf `Clear fault`).
-  **Bekannte Abweichung:** der Zähler lebt nur im Speicher, ein Neustart des Dienstes
-  quittiert die Störung also doch — am 21.09. genau so benutzt. Der Satz „kein Freigeben
-  durch einen Neustart" ist damit **Wunsch, nicht Verhalten**; wer ihn gelten lassen will,
-  muss den Riegel persistieren (offener Punkt).
+  kein Schalten. **Freigabe von Hand — und ein Neustart ist eine solche Handlung:
+  `systemctl --user restart evcharge-wt.service` quittiert die Störung mit Absicht**
+  (Entscheidung des Besitzers, 21.09.2026). Der Zähler lebt nur im Speicher, und das ist so
+  gewollt: wer neu startet, hat die Ursache vorher angesehen. **Nicht** gewollt ist das
+  Gegenteil — dass die Störung sich während des Laufs von selbst löst, weil der Zähler
+  altert; im Betrieb bleibt der Riegel bestehen.
 * **Hauszeit ist nicht Hostzeit**: Der Host läuft UTC, gewünschte Wanduhrzeiten sind in
   `Europe/Berlin` ausgedrückt (`Settings.timezone`, IANA-Name, sommerzeitfest).
 
@@ -230,12 +231,6 @@ wird nie geglaubt.
    genommen, weil damit die **Steuerung aus HA heraus verloren geht** (die App kann über
    diesen Weg nur senden, nicht empfangen; Modus, Stromgrenzen und SOC-Schwellen leben in
    der eigenen Web-UI und über `set/#`-Topics).
-10. **Der Sicherungs-Riegel überlebt keinen Neustart.** STATE.md verlangt „kein Freigeben
-    durch einen Neustart", der Zähler lebt aber nur im Speicher (`SwitchCounter`), also
-    quittiert `systemctl --user restart evcharge-wt.service` die Störung — am 21.09. genau so
-    benutzt, um nach dem Fix weiterzumachen. Wer den Satz gelten lassen will, muss den Riegel
-    persistieren (kleine Datei neben `config.json`, beim Start einlesen). Entscheidung des
-    Besitzers steht aus.
 
 ## Bekannte Messanomalien der Umgebung
 
