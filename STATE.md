@@ -92,11 +92,13 @@ wird nie geglaubt.
   Buffer-Sperre; für "Akku ins Auto entladen" nimmt der Besitzer den Modus `manual`).
   Alles drei steht im UI im Tooltip der Zeile "battery" und an den Feldern buffer/priority SOC.
 * **Strom folgt dem Überschuss sofort** im Bereich 6 A…Maximum. Hysterese gibt es nur an
-  der Untergrenze, und dort **asymmetrisch mit 300 W** (seit 21.09.2026): bei ausgeschalteter
-  Wallbox braucht ein **Start** die Untergrenze **+300 W** (`enable_threshold_w`), eine
-  **laufende** Ladung wird bis **−300 W** darunter **gehalten** (`disable_threshold_w`) und
-  erst darunter abgeschaltet. Im Band dazwischen bleibt alles, wie es ist — das ist genau
-  das Fenster, in dem die App vorher im Minutentakt gestartet und gestoppt hat.
+  der Untergrenze, und sie ist **asymmetrisch** (seit 21.09.2026): ein **Start** braucht die
+  Untergrenze **+100 W** (`enable_threshold_w`, so vom Besitzer gesetzt — ein später Start
+  verschenkt Sonne), eine **laufende** Ladung wird bis **−300 W** darunter **gehalten**
+  (`disable_threshold_w`, bewusst größer: ein unnötiger Stopp kostet eine Sitzung) und erst
+  darunter abgeschaltet. Bei 6 A / 1 Phase also: Start ab **1480 W**, Halten bis **1080 W**.
+  Im Band dazwischen bleibt der Zustand, wie er ist — genau das Fenster, in dem die App
+  vorher im Minutentakt gestartet und gestoppt hat.
 * **Hausbatterie-Wächter hängt an der Entscheidung, nicht am Modusnamen**: beim
   Überschussladen wird unter `buffer_soc` nicht geladen (und der Grund angezeigt); im
   Billigfenster ist die Batterie nicht das Thema, weil dort das Netz zahlt.
@@ -150,8 +152,10 @@ wird nie geglaubt.
 * **Hysterese 300 W an der Untergrenze** (`enable_threshold_w` / `disable_threshold_w`,
   `controller.py: _floor_w`). `disable_threshold_w` war bis dahin **deklariert und nie
   gelesen** — eine Einstellung, die nichts tat. Jetzt: Start ab Untergrenze **+300 W**,
-  Halten bis Untergrenze **−300 W**. Live sichtbar in der Begründung: „below minimum
-  (**1080 W**, 1p)" solange die Wallbox freigibt, „(**1680 W**, 1p)" wenn sie aus ist.
+  Halten bis Untergrenze **−300 W**; die **Starthysterese** hat der Besitzer am selben Tag
+  auf **100 W** gesenkt (Config + Neustart), die Haltegrenze blieb bei 300 W. Live sichtbar
+  in der Begründung: „below minimum (**1080 W**, 1p)" solange die Wallbox freigibt,
+  „(**1480 W**, 1p)" wenn sie aus ist.
 * **Sicherung zählt nur noch Stopps** (`safety.py`) — Regel oben, `amx` zählte nie.
 * **Test-Attrappe korrigiert** (`tests/test_controller.py`): `car()` setzt `enabled` passend
   zu `charging`. Vorher beschrieb sie Zustände, die die Hardware nicht hergibt (Strom fließt,
