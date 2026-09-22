@@ -142,9 +142,14 @@ wird nie geglaubt.
   **Drei Werte, so gewünscht** (22.09.2026): (1) go-e, (2) SDM = `import − export`,
   (3) **SDM + Garage-PV** = `import − export + PV` — die Bilanz des Strangs, denn genau das
   hat das Auto gezogen und der Zähler nicht gesehen. Wert 3 ist die Meinung des
-  Wechselrichters und **nur so gut wie dessen Zähler**: am 22.09. in einem Fenster ohne jeden
-  Verbrauch am Strang gemessen **~8 % zu hoch** (Wechselrichter 4,18 kWh gegen 3,88 kWh, die
-  der SDM wirklich hinausfließen sah), und nach jedem Aufwachen meldet das Register kurz
+  Wechselrichters und **nur so gut wie dessen Zähler**: über das Fenster 21.09. 05:00–17:00Z
+  besteht eine **Lücke von bis zu 8 %** (Wechselrichter 4,18 kWh gegen
+  3,88 kWh, die der SDM hinausfließen sah) — **Obergrenze, keine Messung**: der Strang trägt
+  dauerhaft Router, Tor und go-e-Standby, und der SDM kann so kleine Lasten nicht **zählen**
+  (Startstrom 0,04 A), sein Exportzähler liest also genau das zu wenig, was sie verbrauchen.
+  Die 0,30 kWh Lücke sind 25 W Dauerlast über 12 h; die Schätzung des Besitzers (Router ~10 W
+  + go-e ~5 W) deckt davon schon 0,18 kWh. Der echte Fehler des Wechselrichters liegt damit
+  zwischen ~0 % und +8 %. Und nach jedem Aufwachen meldet das Register kurz
   **0,00 kWh** (Poller-Journal 05:16:53) — solche Werte werden verworfen und gezählt
   (`pv_artefacts`), sonst würde die nächste echte Zahl als ~279 kWh „Korrektur" erscheinen.
   Fehlt der Zähler ganz (nachts schläft der Logger, die PV ist dann wirklich 0), ist die
@@ -186,8 +191,13 @@ wird nie geglaubt.
     go-e-Standby werden also nicht mitgezählt — die Session-Zahl ist davon sauber.
   * Die Garage hängt praktisch **einphasig auf L2** (L1/L3 messen 0,00 A); dort Garage-PV,
     go-e, Router, Tor.
-  * Der **Wechselrichter-Zähler** ist gegen den SDM-Export ~8 % zu hoch und liest nach dem
-    Aufwachen kurz 0,00 — für Tageserträge unbrauchbar, als Korrektur nur mit Vorsicht.
+  * Der **Wechselrichter-Zähler** liegt gegen den SDM-Export um **höchstens 8 %** zu hoch
+    (4,18 gegen 3,88 kWh in 12 h) — und diese Lücke ist **kein Beweis für einen Fehler des
+    Wechselrichters**: 0,30 kWh in 12 h sind genau **25 W Dauerlast am Strang**, und die gibt
+    es dort (Router, Tor, go-e-Standby) — sie sind nur für den Zähler unsichtbar, weil er sie
+    nicht **zählen** kann. Der echte Fehler liegt daher zwischen ~0 % (bei ~25 W Dauerlast)
+    und +8 %; ein Zwischenstecker vor dem Router würde es klären. Nach dem Aufwachen liest
+    das Register kurz 0,00.
   * **Der Zähler zählt in 0,1 kWh, nicht in 0,01** (korrigiert 22.09.2026): unser Poller las
     ihn **10× zu klein** (279,56 kWh statt 2795,6). Entschieden **ohne** die App, über die
     Selbstkonsistenz von Zähler und Leistung: im Fenster 21.09. 05:00–17:00Z lief das Register
