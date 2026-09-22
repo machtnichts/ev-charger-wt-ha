@@ -129,6 +129,20 @@ wird nie geglaubt.
   gewollt: wer neu startet, hat die Ursache vorher angesehen. **Nicht** gewollt ist das
   Gegenteil — dass die Störung sich während des Laufs von selbst löst, weil der Zähler
   altert; im Betrieb bleibt der Riegel bestehen.
+* **Session-Energie wird doppelt gemessen** (seit 22.09.2026). Die App rechnet die
+  go-e-Session aus den Phasenmessungen der Wallbox — über die **gemessene** Zykluszeit
+  (nicht `interval_s`, das ist nur das Ziel) und mit **Reset beim Abstecken**, damit
+  „Session" wirklich eine Ansteck-Sitzung meint. Parallel führt sie eine zweite Zahl über
+  den **SDM630** im Garagenstrang (`ha-app/evcharge/session_meter.py`): beim Anstecken
+  werden dessen kWh-Zähler gemerkt, während der Sitzung ist die Differenz die Session, beim
+  Abstecken wird sie als „letzte Session" eingefroren und **in `logs/sdm_sessions.csv`
+  geschrieben** (eine Zeile je Session, mit dem go-e-Wert zum Vergleich). Der SDM630 misst
+  den Garagenstrang, in den auch die Garage-PV einspeist — die Zahl ist also die **Sicht des
+  Zählers** (Auto minus PV-Anteil) und wird bewusst **nicht** korrigiert (so entschieden);
+  Export wird mitgeführt, damit der PV-Anteil sichtbar bleibt. **Frische:** ein Zähler, der
+  sich nicht ändert, wird von HA **nicht** neu geschrieben — sein Alter sagt also nichts.
+  Deshalb entscheidet das Alter der **Leistung** (`entity_live`, `stale_s`) über „stale", und
+  bei veralteten Werten **wartet** die Session, statt 0 kWh zu erfinden.
 * **Hauszeit ist nicht Hostzeit**: Der Host läuft UTC, gewünschte Wanduhrzeiten sind in
   `Europe/Berlin` ausgedrückt (`Settings.timezone`, IANA-Name, sommerzeitfest).
 
@@ -162,7 +176,8 @@ wird nie geglaubt.
   ohne dass die Wallbox freigibt) — und verdeckte damit genau diesen Fehler.
 * Live-Beleg nach dem Neustart am 21.09. 06:40: ein `amx=6` (Nachregeln beim Halten), dann
   **genau ein** `alw=0` nach Ablauf der 180-s-Gnade, danach Ruhe; Zähler 0/5, keine Störung.
-  Stand: **11 Suiten grün** (`test_controller` 91, `test_safety` 29 Prüfungen).
+  Stand: **12 Suiten grün** (`test_controller` 94, `test_safety` 33, `test_session_meter`
+  47 Prüfungen).
 
 ## Zuletzt behoben (19.09.2026)
 
@@ -235,6 +250,15 @@ wird nie geglaubt.
    genommen, weil damit die **Steuerung aus HA heraus verloren geht** (die App kann über
    diesen Weg nur senden, nicht empfangen; Modus, Stromgrenzen und SOC-Schwellen leben in
    der eigenen Web-UI und über `set/#`-Topics).
+
+11. **Der SDM630 wird von Home Assistant nicht mehr gepollt.** Letzter Schreibzugriff auf
+    eine SDM-Entity: **21.09. 23:25**, der Import-Zähler steht seit **20.09. 11:27** still;
+    in 75 s Beobachtung bewegte sich keine einzige SDM-Entity. Folge: die neue
+    Session-Messung steht auf „waiting" — sie sagt das im UI und im CSV, statt 0 kWh zu
+    melden. Zu prüfen ist die Modbus-Konfiguration des Zählers in HA (IP erreichbar? Port?
+    Protokoll zeigt den Fehler). **Und:** die **Garage-PV (Deye) ist seit 21.09. 17:38
+    `unavailable`**, obwohl der Rust-Poller (`powerdash-deye-pv-rs.service`) läuft — zwei
+    Geräte im selben Garagenstrang kurz hintereinander still, also dort nach Strom/Netz sehen.
 
 ## Bekannte Messanomalien der Umgebung
 
