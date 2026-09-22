@@ -251,14 +251,19 @@ wird nie geglaubt.
    diesen Weg nur senden, nicht empfangen; Modus, Stromgrenzen und SOC-Schwellen leben in
    der eigenen Web-UI und über `set/#`-Topics).
 
-11. **Der SDM630 wird von Home Assistant nicht mehr gepollt.** Letzter Schreibzugriff auf
-    eine SDM-Entity: **21.09. 23:25**, der Import-Zähler steht seit **20.09. 11:27** still;
-    in 75 s Beobachtung bewegte sich keine einzige SDM-Entity. Folge: die neue
-    Session-Messung steht auf „waiting" — sie sagt das im UI und im CSV, statt 0 kWh zu
-    melden. Zu prüfen ist die Modbus-Konfiguration des Zählers in HA (IP erreichbar? Port?
-    Protokoll zeigt den Fehler). **Und:** die **Garage-PV (Deye) ist seit 21.09. 17:38
-    `unavailable`**, obwohl der Rust-Poller (`powerdash-deye-pv-rs.service`) läuft — zwei
-    Geräte im selben Garagenstrang kurz hintereinander still, also dort nach Strom/Netz sehen.
+11. ~~SDM630-Polling~~ **geklärt (22.09.2026): der SDM630 wird einwandfrei gepollt.** Die
+    alten Zeitstempel sind korrekt — ein Zähler, der sich nicht ändert, wird von HA **nicht**
+    neu geschrieben. Beweis: die Spannungssensoren (`sdm630_l1/l2/l3_spannung`) und die
+    Frequenz ändern sich **alle ~15 s** (237,83 -> 237,41 V in 75 s). **Lehre für die
+    Frische-Prüfung: ein bewegter Wert muss es sein** — Spannung ja, Leistung/Strom **nein**
+    (nachts 0,00 W / 0,0 A, wird nie neu geschrieben, sieht wie ein toter Zähler aus).
+    `sdm.entity_live` steht deshalb auf `sensor.sdm630_l1_spannung`.
+    **Ebenfalls normal:** die **Garage-PV (Deye, 192.168.178.33:8899) ist nachts nicht
+    erreichbar** — ein Mikro-Wechselrichter wird von der Sonne versorgt. Letzte erfolgreiche
+    Zeile 21.09. **17:38 UTC**, Sonnenuntergang Berlin war 19:40 MESZ = 17:40 UTC; sie kommt
+    nach Sonnenaufgang von selbst zurück. **Kleiner offener Punkt:** der Poller schreibt dann
+    jede Nacht alle 33 s `ERROR ... Host is unreachable` (~2600 Zeilen) — auf eine Zeile je
+    Stunde drosseln oder zwischen Dämmerung und Sonnenaufgang schweigen.
 
 ## Bekannte Messanomalien der Umgebung
 
