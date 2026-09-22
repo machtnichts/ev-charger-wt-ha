@@ -265,6 +265,18 @@ wird nie geglaubt.
     jede Nacht alle 33 s `ERROR ... Host is unreachable` (~2600 Zeilen) — auf eine Zeile je
     Stunde drosseln oder zwischen Dämmerung und Sonnenaufgang schweigen.
 
+12. **Nacht-Rauschen des Deye-Pollers** (anderes Projekt: `HA-POWER-DASHBOARD`).
+    `powerdash-deye-pv-rs.service` schreibt zwischen Dämmerung und Sonnenaufgang alle 33 s
+    `ERROR ConnectionError: io error: connect 192.168.178.33:8899: Host is unreachable
+    (os error 113)` — rund **2600 Zeilen je Nacht** für ein Gerät, das dann erwartungsgemäß
+    vom Netz ist: das SolarMAN-Logger-Modul wird vom Wechselrichter versorgt und geht mit ihm
+    bei Dämmerung weg (letzte erfolgreiche Zeile 21.09. **17:38 UTC**, Sonnenuntergang
+    17:40 UTC). Das Rauschen verdeckt echte Fehler. **Der Besitzer hat dazu eine Idee — es ist
+    bewusst nichts implementiert, Entscheidung ausstehend.** Kandidaten: (a) zwischen
+    Dämmerung und Sonnenaufgang schweigen (Sonne aus HA oder berechnet), (b) auf eine Zeile je
+    Stunde drosseln, (c) je Nacht eine gezählte Zusammenfassung. **Nicht** unterdrücken darf
+    man „unerreichbar am Mittag" — das bleibt ein echter Fehler.
+
 ## Bekannte Messanomalien der Umgebung
 
 Nicht unsere Baustelle, aber beim Lesen von Zahlen bedenken: `sensor.garage_pv_energie`
