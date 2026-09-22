@@ -138,11 +138,22 @@ wird nie geglaubt.
   Abstecken wird sie als „letzte Session" eingefroren und **in `logs/sdm_sessions.csv`
   geschrieben** (eine Zeile je Session, mit dem go-e-Wert zum Vergleich). Der SDM630 misst
   den Garagenstrang, in den auch die Garage-PV einspeist — die Zahl ist also die **Sicht des
-  Zählers** (Auto minus PV-Anteil) und wird bewusst **nicht** korrigiert (so entschieden);
-  Export wird mitgeführt, damit der PV-Anteil sichtbar bleibt. **Frische:** ein Zähler, der
-  sich nicht ändert, wird von HA **nicht** neu geschrieben — sein Alter sagt also nichts.
-  Deshalb entscheidet das Alter der **Leistung** (`entity_live`, `stale_s`) über „stale", und
-  bei veralteten Werten **wartet** die Session, statt 0 kWh zu erfinden.
+  Zählers** (Auto minus PV-Anteil); Export wird mitgeführt, damit der PV-Anteil sichtbar bleibt.
+  **Drei Werte, so gewünscht** (22.09.2026): (1) go-e, (2) SDM = `import − export`,
+  (3) **SDM + Garage-PV** = `import − export + PV` — die Bilanz des Strangs, denn genau das
+  hat das Auto gezogen und der Zähler nicht gesehen. Wert 3 ist die Meinung des
+  Wechselrichters und **nur so gut wie dessen Zähler**: am 22.09. in einem Fenster ohne jeden
+  Verbrauch am Strang gemessen **~8 % zu hoch** (Wechselrichter 4,18 kWh gegen 3,88 kWh, die
+  der SDM wirklich hinausfließen sah), und nach jedem Aufwachen meldet das Register kurz
+  **0,00 kWh** (Poller-Journal 05:16:53) — solche Werte werden verworfen und gezählt
+  (`pv_artefacts`), sonst würde die nächste echte Zahl als ~279 kWh „Korrektur" erscheinen.
+  Fehlt der Zähler ganz (nachts schläft der Logger, die PV ist dann wirklich 0), ist die
+  Korrektur **0** und die CSV-Zeile sagt es; kommt er mitten in der Session, wird die Basis
+  nachgeholt und die Zeile nennt die Korrektur „teilweise".
+  **Frische:** ein Zähler, der sich nicht ändert, wird von HA **nicht** neu geschrieben — sein
+  Alter sagt also nichts. Deshalb entscheidet das Alter der **Leistung** über „stale"
+  (`entity_live` für den SDM, `entity_pv_power` für den Deye), und bei veralteten Werten
+  **wartet** die Session, statt 0 kWh zu erfinden.
 * **Hauszeit ist nicht Hostzeit**: Der Host läuft UTC, gewünschte Wanduhrzeiten sind in
   `Europe/Berlin` ausgedrückt (`Settings.timezone`, IANA-Name, sommerzeitfest).
 
@@ -162,6 +173,21 @@ wird nie geglaubt.
   Versuch je Backoff-Periode, damit ein tagsüber defekter Logger nicht gehämmert wird.
   Gepinnt durch 6 neue Unit-Tests (Schedule, Drosselung, einmal-je-Ausfall, Weck-Gating),
   33 im Binary + 13 Konformitäts-Tests grün.
+* **Dritter Session-Wert: SDM + Garage-PV** (`ha-app/evcharge/session_meter.py`, Wunsch des
+  Besitzers; Regeln oben). Zwei Fallen dabei geschlossen, jede mit Test: ein **0,00** des
+  Wechselrichter-Zählers als *Basis* hätte die nächste echte Zahl in eine ~279-kWh-Korrektur
+  verwandelt, und eine Session, die beginnt, während der Logger schläft, holt die Basis jetzt
+  nach (Korrektur dann „teilweise"). `test_session_meter` **68 Prüfungen**, 12 Suiten grün.
+* **Messungen am Garagenstrang** (22.09.2026 — wichtig beim Lesen aller Zahlen):
+  * Drei Nächte, je ~11,5 h: SDM **Import und Export exakt 0,000 kWh**. Der Strang ist also
+    nachts nicht „lastfrei", sondern **unter der Zählschwelle** des Geräts (Datenblatt:
+    Startstrom 0,4 % von Ib = **0,04 A**, spezifiziert erst ab 5 % Ib = 0,5 A; gemessen:
+    0,41 A / 97 VA / **−97 var** / PF −0,20 auf L2, Zähler stehen trotzdem). Router, Tor und
+    go-e-Standby werden also nicht mitgezählt — die Session-Zahl ist davon sauber.
+  * Die Garage hängt praktisch **einphasig auf L2** (L1/L3 messen 0,00 A); dort Garage-PV,
+    go-e, Router, Tor.
+  * Der **Wechselrichter-Zähler** ist gegen den SDM-Export ~8 % zu hoch und liest nach dem
+    Aufwachen kurz 0,00 — für Tageserträge unbrauchbar, als Korrektur nur mit Vorsicht.
 
 ## Zuletzt behoben (21.09.2026)
 
@@ -194,7 +220,7 @@ wird nie geglaubt.
 * Live-Beleg nach dem Neustart am 21.09. 06:40: ein `amx=6` (Nachregeln beim Halten), dann
   **genau ein** `alw=0` nach Ablauf der 180-s-Gnade, danach Ruhe; Zähler 0/5, keine Störung.
   Stand: **12 Suiten grün** (`test_controller` 94, `test_safety` 33, `test_session_meter`
-  47 Prüfungen).
+  68 Prüfungen).
 
 ## Zuletzt behoben (19.09.2026)
 
