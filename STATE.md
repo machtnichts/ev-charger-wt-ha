@@ -146,6 +146,23 @@ wird nie geglaubt.
 * **Hauszeit ist nicht Hostzeit**: Der Host läuft UTC, gewünschte Wanduhrzeiten sind in
   `Europe/Berlin` ausgedrückt (`Settings.timezone`, IANA-Name, sommerzeitfest).
 
+## Zuletzt behoben (22.09.2026)
+
+* **Der Deye-Poller schweigt jetzt nachts und wacht am Zähler auf** (anderes Projekt:
+  `HA-POWER-DASHBOARD/deye-pv-rs`). Vorher: ein Fehlversuch alle 33 s, jeder mit Logzeile
+  **und** einem `offline` nach HA — rund 2600 Zeilen und 2600 Nachrichten je Nacht für ein
+  Gerät, das erwartungsgemäß schläft (das SolarMAN-Logger-Modul hängt am Wechselrichter;
+  Beweis: es war um **05:16 UTC** von selbst wieder da, Port 8899 offen). Jetzt: Verdopplung
+  vom Intervall bis `--backoff-max` (900 s), Logzeile nur beim ersten Fehler einer Serie und
+  dann jedem achten Schritt, `offline` nur beim Zustandswechsel (einmal je Ausfall), und die
+  Erholungszeile nennt die Zahl der Versuche. **Die Idee des Besitzers ist der Weckruf:**
+  während des Backoffs liest der Poller `sensor.sdm630_total_kwh` (wächst in beide
+  Richtungen, bewegt sich also genau dann, wenn im Garagenstrang Energie fließt — einspeisen
+  oder ins Auto) und pollt sofort wieder, wenn der Zähler sich bewegt; ein vorzeitiger
+  Versuch je Backoff-Periode, damit ein tagsüber defekter Logger nicht gehämmert wird.
+  Gepinnt durch 6 neue Unit-Tests (Schedule, Drosselung, einmal-je-Ausfall, Weck-Gating),
+  33 im Binary + 13 Konformitäts-Tests grün.
+
 ## Zuletzt behoben (21.09.2026)
 
 * **Die App hat `alw=0` geschickt, obwohl genug Sonne da war** (`controller.py: _finalize`).
@@ -264,18 +281,6 @@ wird nie geglaubt.
     nach Sonnenaufgang von selbst zurück. **Kleiner offener Punkt:** der Poller schreibt dann
     jede Nacht alle 33 s `ERROR ... Host is unreachable` (~2600 Zeilen) — auf eine Zeile je
     Stunde drosseln oder zwischen Dämmerung und Sonnenaufgang schweigen.
-
-12. **Nacht-Rauschen des Deye-Pollers** (anderes Projekt: `HA-POWER-DASHBOARD`).
-    `powerdash-deye-pv-rs.service` schreibt zwischen Dämmerung und Sonnenaufgang alle 33 s
-    `ERROR ConnectionError: io error: connect 192.168.178.33:8899: Host is unreachable
-    (os error 113)` — rund **2600 Zeilen je Nacht** für ein Gerät, das dann erwartungsgemäß
-    vom Netz ist: das SolarMAN-Logger-Modul wird vom Wechselrichter versorgt und geht mit ihm
-    bei Dämmerung weg (letzte erfolgreiche Zeile 21.09. **17:38 UTC**, Sonnenuntergang
-    17:40 UTC). Das Rauschen verdeckt echte Fehler. **Der Besitzer hat dazu eine Idee — es ist
-    bewusst nichts implementiert, Entscheidung ausstehend.** Kandidaten: (a) zwischen
-    Dämmerung und Sonnenaufgang schweigen (Sonne aus HA oder berechnet), (b) auf eine Zeile je
-    Stunde drosseln, (c) je Nacht eine gezählte Zusammenfassung. **Nicht** unterdrücken darf
-    man „unerreichbar am Mittag" — das bleibt ein echter Fehler.
 
 ## Bekannte Messanomalien der Umgebung
 
