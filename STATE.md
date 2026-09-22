@@ -188,6 +188,19 @@ wird nie geglaubt.
     go-e, Router, Tor.
   * Der **Wechselrichter-Zähler** ist gegen den SDM-Export ~8 % zu hoch und liest nach dem
     Aufwachen kurz 0,00 — für Tageserträge unbrauchbar, als Korrektur nur mit Vorsicht.
+  * **Der Zähler zählt in 0,1 kWh, nicht in 0,01** (korrigiert 22.09.2026): unser Poller las
+    ihn **10× zu klein** (279,56 kWh statt 2795,6). Entschieden **ohne** die App, über die
+    Selbstkonsistenz von Zähler und Leistung: im Fenster 21.09. 05:00–17:00Z lief das Register
+    **42 Schritte** weiter, während die protokollierte AC-Leistung **4,18 kWh** ergab → 0,0995
+    kWh je Schritt. Die Deye-App bestätigt es von der anderen Seite (2,79 MWh nach 739
+    Betriebstagen ≈ 3,8 kWh/Tag, passend zum gemessenen Tagesertrag). Folge: auch der **dritte
+    Session-Wert** wäre um Faktor 10 zu klein gewesen. Der Poller veröffentlicht außerdem
+    keinen rückwärts laufenden Zähler mehr — HA liest ein Absinken bei `total_increasing` als
+    Zählerreset und **addiert** den neuen Wert, hätte also morgens den ganzen Stand als
+    Erzeugung gebucht.
+  * Offen: Das Register ist **16 Bit** und läuft bei **6553,5 kWh** über (~2,7 Jahre bei
+    diesem Ertrag) — dann friert der Rückwärts-Schutz den Wert ein, vorher muss das hohe Wort
+    geprüft werden.
 
 ## Zuletzt behoben (21.09.2026)
 
