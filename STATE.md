@@ -173,6 +173,41 @@ wird nie geglaubt.
 * **Hauszeit ist nicht Hostzeit**: Der Host läuft UTC, gewünschte Wanduhrzeiten sind in
   `Europe/Berlin` ausgedrückt (`Settings.timezone`, IANA-Name, sommerzeitfest).
 
+## PV-Prognose — Schritt 1: nur Anzeige (23.09.2026)
+
+Der Besitzer will vormittags das **Auto** bevorzugt haben und nachmittags den **Akku** —
+entschieden nach Wetter, nicht nach Uhrzeit. Dafür braucht es eine lokale Prognose.
+**Gebaut ist Schritt 1: die Prognose wird angezeigt und täglich protokolliert; sie steuert
+NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
+
+* **Quelle:** Open-Meteo, `global_tilted_irradiance` je Dachfläche, ohne Schlüssel, ein Abruf
+  pro Stunde und Fläche. Zwei Flächen: **4 kWp Ost (az −90) + 4 kWp West (az +90)**, Neigung 25°
+  (die Neigung geht bewusst als Beobachtungsfaktor auf), Standort Linkenheim **49,1278/8,4076**.
+  Rechnung: `GTI (W/m²) x kWp = Wh` je Stunde (DC-Seite), `x PR 0,85` = AC-Erwartung.
+* **Belegt:** die App zeigt für heute **28,66 kWh** — eine unabhängige Direktrechnung mit
+  demselben Aufruf ergibt **28,66 kWh** (identisch). Gegen echte SE-Tage: 22.09 Prognose 27,9
+  vs 28,5 gemessen (**Faktor 1,02**), 21.09 **0,74**, 20.09 **0,73**. Also: klarer Tag
+  punktgenau, trübe Tage ~27 % zu hoch — deshalb Marge 1,3 im geplanten Regler.
+* **Pin (die Zusage von Schritt 1):** der Controller **kennt das Wort `forecast` nicht**
+  (`tests/test_pv_forecast.py` prüft das, plus: das Modul hat kein Aktuator-Vokabular). Die
+  Prognose *kann* nichts schalten, solange diese Prüfung grün ist.
+* **Der Faktor `factor()`** = gemessen heute / Prognose für genau dieses Fenster, nur mit
+  echter Basis: unter **0,05 kWh** Messung gibt es **keinen** Faktor (der Tag hat noch nicht
+  angefangen — still), außerhalb **0,25–1,60** eine Warnung und ebenfalls keinen. Kein Faktor
+  heißt: der spätere Regler fällt auf die sonnenstands-relative Notlösung zurück, nie auf
+  geratene Zahlen.
+* **Daten:** `logs/pv_forecast_today.json` wird laufend überschrieben (ein Neustart setzt den
+  Tag fort), `logs/pv_forecast.csv` bekommt je **fertigem Tag eine Zeile**: Prognose, beide
+  Messwerte (AC-Seite und Array-Seite), beide Faktoren, Haus-/Auto-/Akku-Energie, SOC-Bereich und
+  `samples`.
+* **`samples` ist wichtig:** die Tageswerte sind eine Zero-Order-Hold-Auslesung, sie erben die
+  Lesekadenz des Wechselrichters (mit Auto alle ~5 s, ohne Auto bewusst gedrosselt — die
+  Regel „kein zusätzlicher Poll-Verkehr" gilt auch hier). Bei veralteten Messwerten integriert
+  der Regler **nichts** (Stale-Gate), statt alte Werte weiterzuzählen.
+* **Offen (Schritt 2, wartet auf Daten):** die Regel selbst — Rest-Prognose (korrigiert) minus
+  erwarteter Hausverbrauch gegen den Akku-Bedarf bis `priority SOC`; die Schätzgrößen
+  (`house_reserve_kwh` 3 kWh, Marge 1,3) sind Platzhalter, bis ein paar geloggte Tage sie ersetzen.
+
 ## Zuletzt behoben (22.09.2026)
 
 * **Der Deye-Poller schweigt jetzt nachts und wacht am Zähler auf** (anderes Projekt:
