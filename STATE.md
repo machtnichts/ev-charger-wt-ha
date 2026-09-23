@@ -218,6 +218,14 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   **Belegt dreifach:** `/api/config`, `zone.home` und als unabhängiger Zeuge der
   Sonnenuntergang — `sun.sun` springt von 17:36 UTC (19:36 Berlin) auf **17:24 UTC
   (19:24 Berlin)**, 12 Minuten früher, genau der Sprung von 52,37° auf 49,13° Nord.
+  Anschließend auf den **genauen Punkt der Anlage** nachgezogen (der Besitzer hat ihn
+  geschickt): dazu die Höhe erneut aus dem Höhenmodell geholt (111 m) und den Sonnenuntergang
+  als Plausibilitätsprobe genommen (820 m Verschiebung ⇒ wenige Sekunden, gemessen 2 s).
+  **Datenschutz-Regel:** die genauen Koordinaten stehen **nur** in Home Assistant und in der
+  lokalen `config.json` (per `.gitignore` ausgeschlossen, mit `git check-ignore` geprüft) —
+  sie gehören **nicht** in dieses Repo oder in die Doku. Öffentlich ist hier nur die PLZ-Ebene.
+  Auch die App rechnet jetzt mit demselben Punkt (frisch abgerufen: 28,86 kWh, unabhängig
+  nachgerechnet 28,86 kWh).
 * **Der Wechselrichter ist nachweislich lesend** — siehe die Regel oben: die ungenutzten
   Batterie-Schreibfunktionen und die Modbus-Schreibprimitive sind raus, strukturell gepinnt,
   und der Proxy zählt weiter `upstream_writes: 0`.
