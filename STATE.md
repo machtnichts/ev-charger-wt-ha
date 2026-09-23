@@ -182,11 +182,16 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
 
 * **Quelle:** Open-Meteo, `global_tilted_irradiance` je Dachfläche, ohne Schlüssel, ein Abruf
   pro Stunde und Fläche. Zwei Flächen: **4 kWp Ost (az −90) + 4 kWp West (az +90)**, Neigung 25°
-  (die Neigung geht bewusst als Beobachtungsfaktor auf), Standort Linkenheim **49,1278/8,4076**.
-  Rechnung: `GTI (W/m²) x kWp = Wh` je Stunde (DC-Seite), `x PR 0,85` = AC-Erwartung.
-* **Belegt:** die App zeigt für heute **28,66 kWh** — eine unabhängige Direktrechnung mit
-  demselben Aufruf ergibt **28,66 kWh** (identisch). Gegen echte SE-Tage: 22.09 Prognose 27,9
-  vs 28,5 gemessen (**Faktor 1,02**), 21.09 **0,74**, 20.09 **0,73**. Also: klarer Tag
+  (die Neigung geht bewusst als Beobachtungsfaktor auf). Standort ist **der genaue Punkt der
+  Anlage** — er steht in Home Assistant und in der lokalen `config.json` und absichtlich **nicht**
+  in diesem Repo (vorher stand hier der PLZ-Mittelpunkt, der 820 m daneben lag und heute 0,2 kWh
+  weniger prognostizierte). Rechnung: `GTI (W/m²) x kWp = Wh` je Stunde (DC-Seite), `x PR 0,85`
+  = AC-Erwartung.
+* **Belegt:** die App zeigt für heute **28,86 kWh** am genauen Standort (der PLZ-Mittelpunkt
+  ergab 28,66) — eine unabhängige Direktrechnung mit demselben Aufruf ergibt **28,86 kWh**
+  (identisch). Gegen echte SE-Tage: 22.09 Prognose 27,9 vs 28,5 gemessen (**Faktor 1,02**),
+  21.09 **0,74**, 20.09 **0,73**; 23.09 Prognose 28,86 gegen **26,8 kWh** (Besitzer, ~19 Uhr —
+  der Wert steigt noch, weil die Akku-Entladung mitzählt) → **Faktor ~0,93**. Also: klarer Tag
   punktgenau, trübe Tage ~27 % zu hoch — deshalb Marge 1,3 im geplanten Regler.
 * **Pin (die Zusage von Schritt 1):** der Controller **kennt das Wort `forecast` nicht**
   (`tests/test_pv_forecast.py` prüft das, plus: das Modul hat kein Aktuator-Vokabular). Die
@@ -204,6 +209,21 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Lesekadenz des Wechselrichters (mit Auto alle ~5 s, ohne Auto bewusst gedrosselt — die
   Regel „kein zusätzlicher Poll-Verkehr" gilt auch hier). Bei veralteten Messwerten integriert
   der Regler **nichts** (Stale-Gate), statt alte Werte weiterzuzählen.
+* **Die Produktion kommt jetzt aus dem Wechselrichter-Zähler, nicht aus einem Integral**
+  (23.09.2026): SunSpec model 101 `WH` (Wort 22/23, Skalenfaktor bei 24) liegt **im ohnehin
+  gelesenen Fenster** — kostet also **null** zusätzlichen Modbus-Verkehr (ein Test pinnt: es
+  bleiben drei Lesevorgänge mit 103 Registern) — und ist exakt: er verliert nichts, während der
+  Dienst steht, und er zählt die spätere **Akku-Entladung mit** (das ist die Zahl, die die
+  Monitoring-App „Produktion" nennt, und sie ist fair: gezählt wird einmal, was der
+  Wechselrichter abgegeben hat). Live belegt: über dieselben 3,5 Minuten stieg der Zähler um
+  **0,0200 kWh** und das AC-Integral der App um **0,0200 kWh** — identisch. Lebensdauerstand
+  23.09.: **29.267,336 kWh** (Skalenfaktor 0).
+* **Achtung beim Vergleichen nach einem Neustart:** das Integral wird aus der Tagesdatei
+  **fortgesetzt**, der Zähler-Startpunkt nur dann, wenn die Tagesdatei einen hat — direkt nach
+  einem Neustart können die beiden Zahlen also **verschiedene Fenster** abdecken. Vergleichen
+  heißt: **Deltas über dasselbe Fenster**, nie die Gesamtwerte (der erste Blick zeigte deshalb
+  0,100 gegen 0,032 kWh und war kein Fehler). Ein Startpunkt, der nicht um Mitternacht gesetzt
+  wurde, ist in der Zeile als `se_partial` markiert.
 * **Offen (Schritt 2, wartet auf Daten):** die Regel selbst — Rest-Prognose (korrigiert) minus
   erwarteter Hausverbrauch gegen den Akku-Bedarf bis `priority SOC`; die Schätzgrößen
   (`house_reserve_kwh` 3 kWh, Marge 1,3) sind Platzhalter, bis ein paar geloggte Tage sie ersetzen.
