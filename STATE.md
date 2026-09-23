@@ -208,6 +208,21 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   erwarteter Hausverbrauch gegen den Akku-Bedarf bis `priority SOC`; die Schätzgrößen
   (`house_reserve_kwh` 3 kWh, Marge 1,3) sind Platzhalter, bis ein paar geloggte Tage sie ersetzen.
 
+## Zuletzt behoben (23.09.2026)
+
+* **HAs Standort stand noch auf der Werkseinstellung Amsterdam** (52,3731/4,8903, Höhe 0 m) —
+  jede sonnenbasierte HA-Automatik und später der Rückfall unserer Prognose-Regel hätte damit
+  für die falsche Stadt gerechnet. Gesetzt über `homeassistant.set_location` auf
+  **49,1278/8,4076, 105 m** (PLZ-Mittelpunkt Linkenheim; die Höhe aus Open-Meteo, demselben
+  Höhenmodell wie die Prognose). Zeitzone war bereits `Europe/Berlin`, Land `DE`.
+  **Belegt dreifach:** `/api/config`, `zone.home` und als unabhängiger Zeuge der
+  Sonnenuntergang — `sun.sun` springt von 17:36 UTC (19:36 Berlin) auf **17:24 UTC
+  (19:24 Berlin)**, 12 Minuten früher, genau der Sprung von 52,37° auf 49,13° Nord.
+* **Der Wechselrichter ist nachweislich lesend** — siehe die Regel oben: die ungenutzten
+  Batterie-Schreibfunktionen und die Modbus-Schreibprimitive sind raus, strukturell gepinnt,
+  und der Proxy zählt weiter `upstream_writes: 0`.
+* **PV-Prognose Schritt 1** gebaut und live (siehe eigener Abschnitt oben).
+
 ## Zuletzt behoben (22.09.2026)
 
 * **Der Deye-Poller schweigt jetzt nachts und wacht am Zähler auf** (anderes Projekt:
@@ -347,10 +362,20 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
    `getpass` in `ha-app/config.json` schreiben (landet weder in der Shell-History noch im
    Chat), dann `mqtt.enabled: true`, `systemctl --user restart evcharge-wt.service`, und in
    HA prüfen, ob `sensor.ev_charging_power` & Co. auftauchen.
-7. **Der evcc-Add-on ist in HA noch installiert** (`update.evcc_solar_charging_update`) und
-   sollte dort deinstalliert werden — er darf nie wieder starten. Er ist auch die Quelle der
-   toten `sensor.evcc_*`-Entities im Dashboard (MQTT-Discovery aus der stillgelegten Zeit).
-8. **Dashboard-Zeilen umstellen** (nach Punkt 6): die 34 toten `sensor.evcc_*`-Zeilen im
+7. **Der evcc-Rest in HA bleibt liegen — der Besitzer räumt ihn selbst auf, „irgendwann mal"**
+   (Entscheidung 23.09.2026, ausdrücklich: *nicht* anfassen, nicht nochmal anbieten).
+   Zum Nachschlagen, was dort liegt: der Integrationseintrag **`evcc_intg` steht auf
+   `setup_retry`** (HA klopft weiter an einen toten Server — der einzige Rest, der noch
+   arbeitet), dazu **97 `evcc_*`-Entities, davon 96 `unavailable`/`restored`** (59 davon sind
+   die go-e-Entities aus evccs MQTT-Discovery). **Es gibt keine evcc-Automation mehr** — die
+   frühere Notiz „Automation EVCC PV Laden ab 8 Uhr an" war veraltet (0 evcc-Automationen,
+   geprüft am 23.09.). Falls er es später doch delegiert: der Weg wäre
+   `DELETE /api/config/config_entries/entry/<entry_id>` (existiert nachweislich — mit einer
+   erfundenen ID geprüft, sauberes 404 „Invalid entry specified" statt 405); die 59
+   MQTT-Entities gingen damit **nicht** weg, die hängen als retained Discovery-Nachrichten im
+   Broker und brauchen geleerte Topics (`mqtt.publish` mit leerer Payload und `retain` — über
+   HA selbst möglich, ohne Broker-Login).
+8. **Dashboard-Zeilen umstellen** (nach Punkt 6): die toten `sensor.evcc_*`-Zeilen im
    HA-POWER-DASHBOARD auf die dann vorhandenen Entities der eigenen App zeigen lassen.
 9. **Auch der Deye-Poller soll später auf MQTT umgestellt werden** (Wunsch des Besitzers,
    20.09.2026). Heute publiziert er über HA selbst (`POST /api/services/mqtt/publish`,
