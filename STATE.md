@@ -159,6 +159,17 @@ wird nie geglaubt.
   Alter sagt also nichts. Deshalb entscheidet das Alter der **Leistung** über „stale"
   (`entity_live` für den SDM, `entity_pv_power` für den Deye), und bei veralteten Werten
   **wartet** die Session, statt 0 kWh zu erfinden.
+* **Der Wechselrichter wird nur gelesen, nie geschrieben** (23.09.2026, Entscheidung des
+  Besitzers: „Ich will nicht Akku steuern"). Der SE-Treiber enthielt zwei **nie aufgerufene**
+  Schreibfunktionen (Akkumodus `0xE00D`, Entladegrenze `0xE010`) und der Modbus-Client die
+  Schreibprimitive — alles **entfernt**, samt der ebenfalls toten Export-Limit-Konstanten
+  (`0xE000..0xE002`). Das ist jetzt **strukturell geprüft** (`test_solaredge_decode`): der
+  Client hat keine Schreibmethode, der Treiber nichts, was den Akku steuert, und die
+  Registeradressen dürfen im *Code* nicht wieder auftauchen (in der Modul-Doku stehen sie
+  weiter, damit klar ist, *warum* sie weg sind). **Live-Wächter:** der Proxy zählt
+  `upstream_writes`, und die App stuft jede Zahl > 0 als **„PROXY WROTE TO THE DEVICE" (bad)**
+  ein. Stand: **0 Schreibzugriffe** bei 59k Poll-Zyklen. Geschrieben wird ausschließlich die
+  **Wallbox** (Strom, Freigabe, Neutralstellung) — und nur über den einen Schreibkanal.
 * **Hauszeit ist nicht Hostzeit**: Der Host läuft UTC, gewünschte Wanduhrzeiten sind in
   `Europe/Berlin` ausgedrückt (`Settings.timezone`, IANA-Name, sommerzeitfest).
 
