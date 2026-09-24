@@ -187,12 +187,20 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   in diesem Repo (vorher stand hier der PLZ-Mittelpunkt, der 820 m daneben lag und heute 0,2 kWh
   weniger prognostizierte). Rechnung: `GTI (W/m²) x kWp = Wh` je Stunde (DC-Seite), `x PR 0,85`
   = AC-Erwartung.
-* **Belegt:** die App zeigt für heute **28,86 kWh** am genauen Standort (der PLZ-Mittelpunkt
-  ergab 28,66) — eine unabhängige Direktrechnung mit demselben Aufruf ergibt **28,86 kWh**
-  (identisch). Gegen echte SE-Tage: 22.09 Prognose 27,9 vs 28,5 gemessen (**Faktor 1,02**),
-  21.09 **0,74**, 20.09 **0,73**; 23.09 Prognose 28,86 gegen **26,8 kWh** (Besitzer, ~19 Uhr —
-  der Wert steigt noch, weil die Akku-Entladung mitzählt) → **Faktor ~0,93**. Also: klarer Tag
-  punktgenau, trübe Tage ~27 % zu hoch — deshalb Marge 1,3 im geplanten Regler.
+* **Belegt:** heute **16,56 kWh** erwartet am genauen Standort (eine unabhängige Direktrechnung
+  mit demselben Aufruf ergibt denselben Wert). Gegen echte SE-Tage, mit dem **vollständigen**
+  Tageswert des Besitzers (der abends noch steigt, weil die Akku-Entladung mitzählt):
+  22.09 Prognose 27,9 / **28,5 gemessen** → **1,02** (klarer Tag, punktgenau);
+  23.09 Prognose 28,857 / **27,1 gemessen** → **0,94** (gemischt, Prognose 6,5 % zu hoch);
+  21.09 26,5 / 19,6 → **0,74**; 20.09 22,6 / 16,4 → **0,73** (beide trüb).
+  **Was das für die Marge heißt:** der ungünstigste Fall ist der trübe Tag mit Faktor 0,73 — eine
+  *feste* Marge von 1,3 würde ihn nicht abdecken (1/0,73 = 1,37). Genau deshalb korrigiert die
+  geplante Regel mit dem **Faktor desselben Tages**: an einem Tag wie dem 21.09 steht der Faktor
+  schon mittags bei ~0,74, die Rest-Prognose wird damit multipliziert, und die Marge 1,3 muss nur
+  noch die Unsicherheit *des Restes* abdecken — nicht die des ganzen Tages. Die beobachteten
+  Tagesfaktoren sind also das Argument für die Tageskorrektur, nicht für eine größere feste Marge.
+  Der erste Tag mit einer Prognose **ab Tagesbeginn** (nicht erst abends nachgeliefert) ist der
+  **24.09.** — dessen Zeile um Mitternacht ist der erste saubere Test.
 * **Pin (die Zusage von Schritt 1):** der Controller **kennt das Wort `forecast` nicht**
   (`tests/test_pv_forecast.py` prüft das, plus: das Modul hat kein Aktuator-Vokabular). Die
   Prognose *kann* nichts schalten, solange diese Prüfung grün ist.
