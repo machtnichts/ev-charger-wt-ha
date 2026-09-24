@@ -181,26 +181,38 @@ entschieden nach Wetter, nicht nach Uhrzeit. Dafür braucht es eine lokale Progn
 NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
 
 * **Quelle:** Open-Meteo, `global_tilted_irradiance` je Dachfläche, ohne Schlüssel, ein Abruf
-  pro Stunde und Fläche. Zwei Flächen: **4 kWp Ost (az −90) + 4 kWp West (az +90)**, Neigung 25°
-  (die Neigung geht bewusst als Beobachtungsfaktor auf). Standort ist **der genaue Punkt der
+  pro Stunde und Fläche. Drei Flächen, wie der Besitzer sie korrigiert hat: **4,48 kWp Ost
+  (az −90, 14 Module)**, **1,60 kWp West-Dach (az +90, 5 Module)** und **1,92 kWp West-Gaube
+  (az +90, 6 Module, flacher als das Dach)**. Standort ist **der genaue Punkt der
   Anlage** — er steht in Home Assistant und in der lokalen `config.json` und absichtlich **nicht**
   in diesem Repo (vorher stand hier der PLZ-Mittelpunkt, der 820 m daneben lag und heute 0,2 kWh
   weniger prognostizierte). Rechnung: `GTI (W/m²) x kWp = Wh` je Stunde (DC-Seite), `x PR 0,85`
   = AC-Erwartung.
-* **Belegt:** heute **16,56 kWh** erwartet am genauen Standort (eine unabhängige Direktrechnung
-  mit demselben Aufruf ergibt denselben Wert). Gegen echte SE-Tage, mit dem **vollständigen**
-  Tageswert des Besitzers (der abends noch steigt, weil die Akku-Entladung mitzählt):
-  22.09 Prognose 27,9 / **28,5 gemessen** → **1,02** (klarer Tag, punktgenau);
-  23.09 Prognose 28,857 / **27,1 gemessen** → **0,94** (gemischt, Prognose 6,5 % zu hoch);
-  21.09 26,5 / 19,6 → **0,74**; 20.09 22,6 / 16,4 → **0,73** (beide trüb).
-  **Was das für die Marge heißt:** der ungünstigste Fall ist der trübe Tag mit Faktor 0,73 — eine
-  *feste* Marge von 1,3 würde ihn nicht abdecken (1/0,73 = 1,37). Genau deshalb korrigiert die
-  geplante Regel mit dem **Faktor desselben Tages**: an einem Tag wie dem 21.09 steht der Faktor
-  schon mittags bei ~0,74, die Rest-Prognose wird damit multipliziert, und die Marge 1,3 muss nur
-  noch die Unsicherheit *des Restes* abdecken — nicht die des ganzen Tages. Die beobachteten
-  Tagesfaktoren sind also das Argument für die Tageskorrektur, nicht für eine größere feste Marge.
-  Der erste Tag mit einer Prognose **ab Tagesbeginn** (nicht erst abends nachgeliefert) ist der
-  **24.09.** — dessen Zeile um Mitternacht ist der erste saubere Test.
+* **Belegt gegen sieben Tage mit 15-Minuten-Exporten aus dem SE-Portal** (24.09.2026; jede Datei
+  summiert sich exakt auf den Portal-Tageswert, die Zeitstempel sind Ortszeit — geprüft, indem die
+  Tagesform gegen die Prognose korreliert wurde, nicht angenommen). Prognose gegen den Nachmittag
+  (12–18 Uhr, aus den 15-Minuten-Werten):
+  05.09 **33,1 kWh Prognose / 18,8 kWh Nachmittag**; 06.09 **33,2 / 19,2**; 08.09 **31,3 / 17,9**
+  — drei Tage über **88 % der Tagesobergrenze**, dreimal ein **starker** Nachmittag.
+  21.09 25,4 / 14,1; 07.09 26,4 / 13,3; 10.09 27,8 / **8,9** — drei Tage bei **71–78 %**,
+  dreimal mittel bis schwach. **Zwischen 14,1 und 17,9 kWh liegt keine einzige Beobachtung** —
+  die beiden Gruppen überschneiden sich nicht. Daraus folgt die Schwelle: nicht 70 %, sondern
+  **~88–90 %**. Mit 90 % vom 30-Tage-Bestwert trifft die Regel **7 von 7** Tagen richtig.
+* **Widerlegt: die Tagesfaktor-Korrektur** (also die frühere Idee in diesem Abschnitt). 08.09. und
+  10.09. sind Spiegelbilder: am 08.09. war der Vormittag **tot** (2,56 von 6,88 kWh) und der
+  Nachmittag **stark** (1,13-fach); am 10.09. war der Vormittag **exakt wie prognostiziert** (0,98)
+  und der Nachmittag brach auf **0,51** ein. Der Vormittag sagt über den Nachmittag also nichts —
+  in *keine* Richtung. Ein um 12 Uhr gebildeter Tagesfaktor hätte am 10.09. „alles bestens" gesagt
+  und den Akku zugunsten des Autos leerlaufen lassen. Der Faktor wird nur noch **mitgeschrieben**,
+  nicht mehr verfolgt.
+* **Nebenbefund, der die Kalibrierung erklärt:** über 23 Tage sah die Prognose-Tagessumme
+  unverzerrt aus (Mittel 1,008) — aber der **Abend** (Akku-Entladung, 1,13- bis 1,58-fach) verdeckt,
+  dass der **Nachmittag** im Mittel nur **0,71** der Prognose liefert. Für diese Regel zählt der
+  Nachmittag, nicht die Tagessumme: **die Tagessumme taugt als Anzeige, nicht als Aussage über die
+  Tagesform.** Deshalb ist die Tagesform (Vormittag/Mittag/Nachmittag/Abend) jetzt Teil jeder
+  Tageszeile.
+* **Die Form der Messwerte kommt aus dem Stundenschrieb** (`logs/pv_hourly.csv`, kumulativ je
+  Stunde) — er existiert genau deshalb, bevor die Regel existiert.
 * **Pin (die Zusage von Schritt 1):** der Controller **kennt das Wort `forecast` nicht**
   (`tests/test_pv_forecast.py` prüft das, plus: das Modul hat kein Aktuator-Vokabular). Die
   Prognose *kann* nichts schalten, solange diese Prüfung grün ist.
@@ -209,10 +221,15 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   angefangen — still), außerhalb **0,25–1,60** eine Warnung und ebenfalls keinen. Kein Faktor
   heißt: der spätere Regler fällt auf die sonnenstands-relative Notlösung zurück, nie auf
   geratene Zahlen.
-* **Daten:** `logs/pv_forecast_today.json` wird laufend überschrieben (ein Neustart setzt den
-  Tag fort), `logs/pv_forecast.csv` bekommt je **fertigem Tag eine Zeile**: Prognose, beide
-  Messwerte (AC-Seite und Array-Seite), beide Faktoren, Haus-/Auto-/Akku-Energie, SOC-Bereich und
-  `samples`.
+* **Daten — alles auf Platte, nichts nur im Speicher** (ein Neustart darf die Historie nicht
+  kosten): `logs/pv_forecast_today.json` wird laufend überschrieben (ein Neustart setzt den Tag
+  fort), `logs/pv_forecast.csv` bekommt je **fertigem Tag eine Zeile**: Prognose (gesamt **und** in
+  vier Tagesabschnitten), beide Messwerte (AC- und Array-Seite), beide Faktoren,
+  Haus-/Auto-/Akku-Energie, SOC-Bereich, `samples` — und die Regel-Spalten `best30_kwh` (Referenz),
+  `best30_threshold_kwh`, `best30_pct`, `rule_best_says` (Regel B) und `rule_margin_says` (Regel A).
+  Dazu `logs/pv_days_seed.csv` mit den **22 Tageswerten aus dem Portal-Export**, damit die
+  30-Tage-Referenz nach einem Neustart sofort existiert (aktuell der Bestwert **33,498 kWh** vom
+  06.09.).
 * **`samples` ist wichtig:** die Tageswerte sind eine Zero-Order-Hold-Auslesung, sie erben die
   Lesekadenz des Wechselrichters (mit Auto alle ~5 s, ohne Auto bewusst gedrosselt — die
   Regel „kein zusätzlicher Poll-Verkehr" gilt auch hier). Bei veralteten Messwerten integriert
@@ -232,9 +249,16 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   heißt: **Deltas über dasselbe Fenster**, nie die Gesamtwerte (der erste Blick zeigte deshalb
   0,100 gegen 0,032 kWh und war kein Fehler). Ein Startpunkt, der nicht um Mitternacht gesetzt
   wurde, ist in der Zeile als `se_partial` markiert.
-* **Offen (Schritt 2, wartet auf Daten):** die Regel selbst — Rest-Prognose (korrigiert) minus
-  erwarteter Hausverbrauch gegen den Akku-Bedarf bis `priority SOC`; die Schätzgrößen
-  (`house_reserve_kwh` 3 kWh, Marge 1,3) sind Platzhalter, bis ein paar geloggte Tage sie ersetzen.
+* **Regel B ist gebaut — als Anzeige mit Historie** (24.09.2026): die Prognose wird gegen den
+  **besten vollständigen Tag der letzten 30** gestellt, Schwelle **90 %**; darüber „Auto-Vorrang",
+  darunter „Akku-Vorrang". Die Referenz kommt aus der eigenen Messreihe, damit sie mit der
+  Jahreszeit mitwächst (Juni ~52 kWh, September ~33,5 kWh). Beide Regeln werden **täglich
+  mitgeschrieben**, die Historie entscheidet später, welche Recht hatte. Im UI stehen beide:
+  „forecast vs best day (30d)" und „rule B (season) would say". **Es steuert weiterhin nichts** —
+  der Controller-Pin ist unverändert grün.
+* **Offen (Steuerung, wartet auf die gesammelten Tage):** erst verdrahten, wenn die Historie die
+  Regel bestätigt. Die Schätzgrößen von Regel A (`house_reserve_kwh`, Marge 1,3) bleiben
+  Platzhalter und werden für Regel B voraussichtlich nicht gebraucht.
 
 ## Zuletzt behoben (23.09.2026)
 
