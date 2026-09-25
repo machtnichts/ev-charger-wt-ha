@@ -346,6 +346,14 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
     `local-tools/ids_vor_neukoppeln.json`.
     Offen und rein kosmetisch: sieben `unk_manufacturer…`-Leichen, die krummen Batterie-IDs, und die
     beiden Sensoren fehlen auf den handgepflegten Boards `Klima`/`Heizung`.
+  * **Diese drei Kosmetikpunkte sind noch am selben Abend erledigt:** Batterie-Entitäten umbenannt zu
+    `sensor.toilettetemp_batterie` (55,5 %) und `sensor.tempsensorbad_batterie` (noch `unknown`);
+    alle sieben `unk_manufacturer…`-Leichen `hidden_by: user` (die eine noch aktive zusätzlich
+    deaktiviert); auf `dashboard-klima` und `dashboard-heizung` je eine Karte **„Bad & Toilette"**
+    angehängt (Klima 2→3, Heizung 5→6 Karten, übriger Inhalt byteweise unverändert). **Beinahe-Fehler
+    dabei:** die neue Karte wurde vor dem Umbenennen gebaut und zeigte auf die alten Batterie-IDs —
+    aufgefallen beim Referenzcheck gegen `/api/states` (2 unbekannte Entitäten je Board), korrigiert,
+    danach 0 unbekannte Referenzen. Das Aussehen selbst ist nicht verifiziert (kein HA-Login).
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
