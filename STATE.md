@@ -335,6 +335,17 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
     `sensor.tempsensorbad_{temperatur,luftfeuchtigkeit,druck}`, beider `…_identifizieren` plus die
     `unk_manufacturer_unk_model_{rssi,lqi}`-Leichen. **Die alten Entitäten werden NICHT gelöscht** —
     so bleiben Historie und Langzeitstatistik der beiden Sensoren erhalten.
+  * **Neukoppeln beider Sensoren erfolgreich (25.09. abends).** Beide haben jetzt Hersteller `LUMI`
+    und je eine **Batterie-Entität**: `sensor.toilette_toilettetemp_batterie` = **55,5 %** (numerisch,
+    damit zählt der Batterie-Alarm sie mit) und `sensor.bad_tempsensorbad_batterie` noch `unknown`
+    (füllt sich beim nächsten Bericht). **Die Mess-Entitäten behielten ihre IDs**
+    (`sensor.{toilettetemp,tempsensorbad}_{temperatur,luftfeuchtigkeit,druck}`) — der Recorder hängt
+    an der ID, also laufen **Historie und Langzeitstatistik ohne Bruch weiter**; nur die neuen
+    Batterie-Entitäten sind historienlos. Die Referenzprüfung vorher (null Treffer) hat sich damit
+    bestätigt: es war nichts zu reparieren. Vorher-Nachher-Zuordnung:
+    `local-tools/ids_vor_neukoppeln.json`.
+    Offen und rein kosmetisch: sieben `unk_manufacturer…`-Leichen, die krummen Batterie-IDs, und die
+    beiden Sensoren fehlen auf den handgepflegten Boards `Klima`/`Heizung`.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
