@@ -307,6 +307,23 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   **Werkzeuge** (lokal, gitignored): `local-tools/wasser_alarm_bauen.py` legt die drei Automationen
   an bzw. ändert sie (idempotent), `local-tools/wasser_alarm_zeigen.py` rendert die gespeicherten
   Texte zur Kontrolle. Beide lesen den Token aus `~/.hermes/.env` und enthalten keine Geheimnisse.
+* **Aqara-Inventur (19 Geräte)** — 9 `lumi.weather` (Klima) und 10 `lumi.sensor_magnet.aq2`
+  (Tür/Fenster); 18 leben, gemeldet innerhalb 8–47 min, Zähler gesund. **Der einzige Tote bleibt
+  `Eingangstür`** (121 d, Zelle bestellt). Zwei Befunde mit Handlungsbedarf:
+  * **`ToiletteTemp` und `TempSensorBad` haben keine Batterie-Entität** — ZHA kennt bei ihnen
+    Hersteller/Modell nicht (ihre übrigen Entitäten heißen `sensor.unk_manufacturer_unk_model_*`),
+    deshalb wurde nie eine Batterie angelegt. **Der Batterie-Alarm kann sie nicht sehen**, ihre
+    Zellen könnten unbemerkt sterben. Abhilfe: beide in ZHA erneut interviewen. **Noch offen.**
+  * **Das Dachstudio ist die funkschwächste Ecke** (LQI 60–68 bei Balkontür, TempSensor,
+    FensterSensorAQ, gegen 156–220 im übrigen Haus) — plausible Erklärung dafür, dass ausgerechnet
+    Maschas Taster dort seine Netzanmeldung verlor. Ein mains-betriebener Zigbee-Router dort wäre
+    die dauerhafte Abhilfe.
+  Nächste Zellen: SZTemp 48 %, WohnzimmerTemp 55,5 %, TempSensorTreppe 59 %.
+* **„Fenster Bad"** (`lumi.sensor_magnet.aq2`, bisher nur Werksname): Gerätename über das Register
+  gesetzt. **Entitäts-IDs absichtlich NICHT umbenannt** — die stehen im Lovelace-Dashboard
+  `fenster-turen`, ein Rename hätte die Kachel zerlegt. Vor jedem ID-Rename erst referenzieren
+  (Automationen + alle Storage-Boards), das hat hier genau den Fehler verhindert. Aufnahme des
+  Sensors belegt: er meldete ein 2 Sekunden kurzes Auf/Zu als beide Flanken.
 * **ZHA ist die Zigbee-Anbindung, nicht Zigbee2MQTT** (Config-Entry „Sonoff Zigbee 3.0 USB Dongle
   Plus"); `zigbee2mqtt/#` am Broker ist leer. Zu `zha_event`: ein **eingebuchter Taster** erzeugt
   beim Drücken eines (belegt: `attribute_updated on_off` von Maschas IEEE Sekunden nach dem
