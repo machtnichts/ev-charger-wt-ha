@@ -321,6 +321,20 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
     Weg: **entfernen + neu koppeln** — belegt am eigenen Haus, denn `Fenster Sensor Toilette` trägt
     dieselben Leichen und daneben richtige Entitäten. Preis: neue Entitäts-Suffixe und Leichen;
     vorher prüfen, was darauf verweist. **Noch offen.**
+  * **Referenzprüfung vor dem Neukoppeln (25.09.): null Treffer.** Scan über alle Automationen,
+    Szenen, Zustandsattribute und **alle 12 Lovelace-Boards** (Standard, Karte, Lampe, Mein Zuhause,
+    Treppe-Alarm, Meine Energie, Garage SDM 360, Fenster/Türen, Klima, Heizung, CO2, Strom) — keine
+    einzige der 12 Entitäten (und keine der beiden device_ids) wird irgendwo referenziert. Das
+    Neukoppeln kann also nichts brechen. **YAML-Konfiguration ist per API nicht lesbar** (Template-
+    Sensoren, Skripte, recorder-Ausschlüsse) — dort ist nicht geprüft.
+  * **Alte IDs sind festgehalten**, damit nach dem Neukoppeln zugeordnet werden kann:
+    `local-tools/ids_vor_neukoppeln.json` (gitignored). Suchende Begriffe: IEEE
+    `00:15:8d:00:8b:ba:8c:27` (ToiletteTemp, device_id `a844a6db54c28aff22aa2a0677e72e21`) und
+    `00:15:8d:00:8b:bd:8d:86` (TempSensorBad, device_id `c88b0d9a758cd7121af2fde02a3b5c8b`);
+    Entitäten `sensor.toilettetemp_{temperatur,luftfeuchtigkeit,druck}`,
+    `sensor.tempsensorbad_{temperatur,luftfeuchtigkeit,druck}`, beider `…_identifizieren` plus die
+    `unk_manufacturer_unk_model_{rssi,lqi}`-Leichen. **Die alten Entitäten werden NICHT gelöscht** —
+    so bleiben Historie und Langzeitstatistik der beiden Sensoren erhalten.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
