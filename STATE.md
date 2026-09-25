@@ -267,6 +267,53 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Regel bestätigt. Die Schätzgrößen von Regel A (`house_reserve_kwh`, Marge 1,3) bleiben
   Platzhalter und werden für Regel B voraussichtlich nicht gebraucht.
 
+## Zuletzt behoben (25.09.2026)
+
+* **Batterie-Runde: vier Geräte zurück, und eine Fehldeutung korrigiert.** Treppe Keller, Erstes
+  Geschoss Treppe, TreppeEG Rechts und Button Altar kamen nach Zellwechsel von selbst zurück.
+  **Button Mascha PC** zusätzlich nach **Neuanlernen in ZHA** — die Entität
+  `switch.hobeian_zg_101zl_4` bleibt dabei unverändert (ZHA hängt anhand der IEEE-Adresse an das
+  bestehende Gerät: kein `_5`, keine Leiche, Automationen bleiben gültig). Ein Tastendruck allein
+  weckt ein Gerät ohne Netzanmeldung nicht, egal wie oft. Fünfter Taster derselben Bauart und
+  intakt: `switch.button_pc_wt` („Button PC WT", schaltet den PC ab, Batterie meldet frisch).
+* **„stumm seit 19.09." war eine Fehldeutung.** Das ist nur der Zeitstempel, den HA beim Neustart
+  auf die Entitäten schreibt. Der **letzte echte Kontakt** steht geräteweise in ZHA (`zha/devices`
+  → `last_seen`, `lqi`, `available`): alle noch stummen Batteriegeräte hatten zuletzt vor **88 bis
+  369 Tagen** gesendet — **kein** Gerät ist am 19.09. ausgefallen. Triage-Regel daraus: unter ~8
+  Tagen = echter Kandidat für eine Zelle, Monate/Jahre = Karteileiche (Ersatz, abgebaut) — da hilft
+  keine Batterie.
+* **Drei Karteileichen deaktiviert** (namenlose ZG-101ZL `…a2:81:f4` und `…95:40:dc` sowie das
+  namenlose `_TZ3000_zutizvyk TS0203`) über `config/device_registry/update` mit `disabled_by: user`
+  — reversibel mit `null`. Beleg: Entitäten in HA **605 → 590**, Rücklesen `disabled_by=user`. Der
+  Stumm-Alarm nennt sie nicht mehr: er hat keine fest verdrahteten Namen, sondern scannt dynamisch,
+  und deaktivierte Entitäten verlassen die Zustandsmaschine. **WasserSensor Heizung** (88 d) ist am
+  selben Abend nach Zellwechsel **von selbst** wieder eingebucht (100 %, LQI 148) — es braucht also
+  nicht immer ein Neuanlernen; **Eingangstür** (121 d) bleibt absichtlich stehen (angeblich in
+  Betrieb, Zuordnung noch offen: es gibt daneben den lebenden Zwilling `AqaraSensorSZTür` — dessen
+  Öffnungs-Entität steht dauerhaft auf **offen**, weil die Schlafzimmertür praktisch immer gekippt
+  ist; das ist korrekt und **kein** Defekt, Temperatur und Batterie melden frisch). Neu
+  aufgefallen und noch ungeklärt: **`Thermostat-Ralf-Keller-Party-Z`** (still seit 20.02.2026).
+* **Zwei Wassersensoren haben jetzt einen fetten Telegram-Alarm** (HA-nativ, gleicher Bot und
+  gleiche Gruppe wie die Batterie-Alarme): `wasser_leck_heizung` (`binary_sensor.wassersensor_heizung`,
+  HOBEIAN ZG-222Z) und `wasser_leck_waschmaschine` (`binary_sensor.tz3000_upgcbody_snzb_05`), dazu
+  `wasser_entwarnung` für beide. Verhalten: sofort bei Nässe (5 s entprellt), danach **alle 5
+  Minuten erneut, solange nass** (max. 24 Runden = 2 h), und eine Entwarnung beim Trockenwerden —
+  letztere nur nach echter Nässe (`trigger.from_state == 'on'`), nicht beim HA-Neustart.
+  Beleg: Testauslösung 17:58:34 UTC (Heizung) und 18:01:54 UTC (Waschmaschine) — beide Male
+  wanderte der Zeitstempel der Gruppen-Notify-Entität eine Sekunde später mit.
+  **Pitfall:** `automation.trigger` **wartet** auf das Ende der Automation — eine mehrstündige
+  Automation läuft damit in den Timeout der HTTP-Anfrage. Erfolg deshalb über `last_triggered`
+  und den Zeitstempel der Notify-Entität prüfen, nicht am Rückgabewert der Auslösung.
+  **Werkzeuge** (lokal, gitignored): `local-tools/wasser_alarm_bauen.py` legt die drei Automationen
+  an bzw. ändert sie (idempotent), `local-tools/wasser_alarm_zeigen.py` rendert die gespeicherten
+  Texte zur Kontrolle. Beide lesen den Token aus `~/.hermes/.env` und enthalten keine Geheimnisse.
+* **ZHA ist die Zigbee-Anbindung, nicht Zigbee2MQTT** (Config-Entry „Sonoff Zigbee 3.0 USB Dongle
+  Plus"); `zigbee2mqtt/#` am Broker ist leer. Zu `zha_event`: ein **eingebuchter Taster** erzeugt
+  beim Drücken eines (belegt: `attribute_updated on_off` von Maschas IEEE Sekunden nach dem
+  Anlernen, und **kein** Ereignis während 5–10 Drücken davor — der saubere Vorher/Nachher-Beweis).
+  Ein schlafender Präsenz-/Battersensor erzeugt dagegen keines. Ein leerer Ereignisstrom beweist
+  also nichts über Sensoren; maßgeblich bleibt die Zustandsänderung der Entität.
+
 ## Zuletzt behoben (23.09.2026)
 
 * **HAs Standort stand noch auf der Werkseinstellung Amsterdam** (52,3731/4,8903, Höhe 0 m) —
