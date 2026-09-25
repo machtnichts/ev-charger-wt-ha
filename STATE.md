@@ -314,10 +314,20 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
     Hersteller/Modell nicht (ihre übrigen Entitäten heißen `sensor.unk_manufacturer_unk_model_*`),
     deshalb wurde nie eine Batterie angelegt. **Der Batterie-Alarm kann sie nicht sehen**, ihre
     Zellen könnten unbemerkt sterben. Abhilfe: beide in ZHA erneut interviewen. **Noch offen.**
-  * **Das Dachstudio ist die funkschwächste Ecke** (LQI 60–68 bei Balkontür, TempSensor,
-    FensterSensorAQ, gegen 156–220 im übrigen Haus) — plausible Erklärung dafür, dass ausgerechnet
-    Maschas Taster dort seine Netzanmeldung verlor. Ein mains-betriebener Zigbee-Router dort wäre
-    die dauerhafte Abhilfe.
+  * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
+    Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
+    36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
+    `FensterSensorAQ` im selben Raum 164). Die zunächst gemeldeten 60–68 waren Momentaufnahmen.
+    **Warum Maschas Taster seine Netzanmeldung verlor, ist mit den vorliegenden Daten nicht
+    entschieden** (Route oder Koordinator-Tabelle) — nicht als geklärt darstellen.
+  * **Button → Steckdose läuft über HA**, nicht als Gerätebindung: die Automation „Button => Mascha PC"
+    (`automation.button_mascha_pc`, id `1758434574653`) hört auf `zha_event`, prüft
+    `device_ieee == a4:c1:38:d6:46:c0:09:e7` und `command == "toggle"` und schaltet
+    `switch.steckdose_mascha`. Beleg für den Erfolg des Neuanlernens: Auslösung 19:31:16 Uhr, sechs
+    Minuten nach dem Anlernen. **Folge:** solange der Taster nicht eingebucht ist, ist die Steckdose
+    nicht schaltbar, auch wenn seine LED leuchtet. Der Trigger ist ungefiltert (`zha_event` für alle
+    Geräte) — er funktioniert, aber ein `event_data`-Filter auf die IEEE wäre sauberer und würde bei
+    `mode: single` auch das Verwerfen eines Drucks während eines anderen Ereignisses vermeiden.
   Nächste Zellen: SZTemp 48 %, WohnzimmerTemp 55,5 %, TempSensorTreppe 59 %.
 * **„Fenster Bad"** (`lumi.sensor_magnet.aq2`, bisher nur Werksname): Gerätename über das Register
   gesetzt. **Entitäts-IDs absichtlich NICHT umbenannt** — die stehen im Lovelace-Dashboard
