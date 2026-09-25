@@ -329,6 +329,17 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
     Geräte) — er funktioniert, aber ein `event_data`-Filter auf die IEEE wäre sauberer und würde bei
     `mode: single` auch das Verwerfen eines Drucks während eines anderen Ereignisses vermeiden.
   Nächste Zellen: SZTemp 48 %, WohnzimmerTemp 55,5 %, TempSensorTreppe 59 %.
+* **Drei Taster-Automationen auf gefilterten Trigger umgestellt** (25.09.): `Button => Steckdose mein
+  PC` (id 1758393492176), `Button => Mascha PC` (1758434574653) und `Button => Steckdose Altar`
+  (1758434943261) hörten auf **jedes** `zha_event` im Haus und filterten erst in der Bedingung; jetzt
+  steht `event_data: {device_ieee: …}` direkt im Trigger. Geändert wurde **nur** der Trigger —
+  Bedingung, Aktion und Mode sind nach dem Schreiben byteweise verglichen und identisch, alle drei
+  weiter `on`. Der Filter ist derselbe Wert, den die Bedingung ohnehin prüft (die nachweislich
+  funktioniert, siehe 19:31-Auslösung). End-to-end-Beleg per Tastendruck steht noch aus.
+* **Zwei tote Automationen gefunden:** `automation.goe_nachtladen_start_2` und
+  `automation.goe_nachtladen_stop` stehen auf `unavailable`, zu beiden existiert **keine**
+  Konfiguration mehr (REST-Config-View: 404). Karteileichen aus der go-e-/Nachtladen-Zeit; sie können
+  nichts mehr auslösen und kollidieren daher nicht mit dem eigenen Lade-Regler. Aufräumen offen.
 * **„Fenster Bad"** (`lumi.sensor_magnet.aq2`, bisher nur Werksname): Gerätename über das Register
   gesetzt. **Entitäts-IDs absichtlich NICHT umbenannt** — die stehen im Lovelace-Dashboard
   `fenster-turen`, ein Rename hätte die Kachel zerlegt. Vor jedem ID-Rename erst referenzieren
