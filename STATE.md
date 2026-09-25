@@ -313,7 +313,14 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   * **`ToiletteTemp` und `TempSensorBad` haben keine Batterie-Entität** — ZHA kennt bei ihnen
     Hersteller/Modell nicht (ihre übrigen Entitäten heißen `sensor.unk_manufacturer_unk_model_*`),
     deshalb wurde nie eine Batterie angelegt. **Der Batterie-Alarm kann sie nicht sehen**, ihre
-    Zellen könnten unbemerkt sterben. Abhilfe: beide in ZHA erneut interviewen. **Noch offen.**
+    Zellen könnten unbemerkt sterben. **Korrektur (25.09.):** der zuerst empfohlene Weg „in ZHA
+    erneut interviewen" existiert **nicht** — die ZHA-Websocket-API kennt nur
+    `zha/devices/reconfigure`, und 16 Aufrufe über fünf Minuten bei nachweislich wachem Gerät
+    (deren `last_seen` und Werte während der Aktion vorrückten) haben den Hersteller nicht geändert.
+    Hersteller und Modell kommen aus dem Node Descriptor, den ZHA **beim Koppeln** liest. Wirklicher
+    Weg: **entfernen + neu koppeln** — belegt am eigenen Haus, denn `Fenster Sensor Toilette` trägt
+    dieselben Leichen und daneben richtige Entitäten. Preis: neue Entitäts-Suffixe und Leichen;
+    vorher prüfen, was darauf verweist. **Noch offen.**
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
