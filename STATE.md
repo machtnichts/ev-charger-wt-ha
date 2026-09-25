@@ -335,7 +335,13 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   steht `event_data: {device_ieee: …}` direkt im Trigger. Geändert wurde **nur** der Trigger —
   Bedingung, Aktion und Mode sind nach dem Schreiben byteweise verglichen und identisch, alle drei
   weiter `on`. Der Filter ist derselbe Wert, den die Bedingung ohnehin prüft (die nachweislich
-  funktioniert, siehe 19:31-Auslösung). End-to-end-Beleg per Tastendruck steht noch aus.
+  funktioniert, siehe 19:31-Auslösung). **End-to-end belegt am selben Abend** (Tastendruck 20:40):
+  Mascha 20:40:04 → `switch.steckdose_mascha` aus; Altar 20:40:44 → `switch.tz3000_gjnozsaz_ts011f`
+  („Steckdose Wohnzimmer Altar") um 20:40:48 an. **Wichtig dabei:** die `switch`-Entität des Tasters
+  selbst ändert sich beim Drücken **nicht** (beide blieben auf ihrem alten Zeitstempel) — sie ist der
+  On/Off-Cluster-Zustand des Geräts, kein Druckzähler. Empfangsnachweis ist `zha_event`, nicht diese
+  Entität; die frühere Notiz im Skill `home-assistant-state-forensics` war in dem Punkt falsch und
+  wurde korrigiert.
 * **Zwei tote Automationen gefunden:** `automation.goe_nachtladen_start_2` und
   `automation.goe_nachtladen_stop` stehen auf `unavailable`, zu beiden existiert **keine**
   Konfiguration mehr (REST-Config-View: 404). Karteileichen aus der go-e-/Nachtladen-Zeit; sie können
