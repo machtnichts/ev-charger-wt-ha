@@ -227,9 +227,16 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   vier Tagesabschnitten), beide Messwerte (AC- und Array-Seite), beide Faktoren,
   Haus-/Auto-/Akku-Energie, SOC-Bereich, `samples` — und die Regel-Spalten `best30_kwh` (Referenz),
   `best30_threshold_kwh`, `best30_pct`, `rule_best_says` (Regel B) und `rule_margin_says` (Regel A).
-  Dazu `logs/pv_days_seed.csv` mit den **22 Tageswerten aus dem Portal-Export**, damit die
+  Dazu `logs/pv_days_seed.csv` mit den **22 Tageswerten aus dem PV-Portal-Export**, damit die
   30-Tage-Referenz nach einem Neustart sofort existiert (aktuell der Bestwert **33,498 kWh** vom
   06.09.).
+  **Seit 25.09. steht auch der Garagenzähler in der Zeile** (`sdm_import_kwh`, `sdm_export_kwh`
+  und die Tagesdifferenz `sdm_import_day_kwh`/`sdm_export_day_kwh`) — das ist die Referenz des
+  Besitzers fürs Auto. Anlass: am **23.09. gingen 19,38 kWh ins Auto**, während der Dienst noch
+  nicht lief; die Tageszeile bucht dort `car_kwh 0.0`. Die Zählermitführung in derselben Zeile
+  macht solche Lücken sichtbar, statt sie Wochen später von Hand zu finden (Summe 22.–25.09.:
+  **29,22 kWh** am Zähler gegen 7,63 kWh in der App-Zählung). Die Tagesdifferenz entsteht aus dem
+  letzten Abschluss; am ersten Tag bleibt sie leer statt geraten.
 * **`samples` ist wichtig:** die Tageswerte sind eine Zero-Order-Hold-Auslesung, sie erben die
   Lesekadenz des Wechselrichters (mit Auto alle ~5 s, ohne Auto bewusst gedrosselt — die
   Regel „kein zusätzlicher Poll-Verkehr" gilt auch hier). Bei veralteten Messwerten integriert
@@ -409,19 +416,27 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
    im UI muss bei 0 bleiben. Treten wieder ~12 Stopps pro Stunde auf, ist die alte Bedingung
    zurückgekommen (Signatur in „Zuletzt behoben") und es ist Code, nicht Hardware; die
    Sicherung rastet bei 5 Stopps selbst ein und schreibt dann nichts mehr.
-6. **MQTT-Ausbau vertagt (Stand 20.09.2026, Besitzer nicht vor Ort).** Der Broker ist da
-   (HA-Add-on `Mosquitto broker`, `192.168.178.126:1883` offen), anonym nimmt er nichts an,
-   und die App steht bereit (`mqtt.host/port` gesetzt, `enabled: false`). **Es fehlt allein
-   das Login.** Es ist **nicht** per HA-API zu holen — belegt am 20.09.: `/api/hassio/addons`
-   → `HTTP 401` (Add-on-Optionen liegen im Supervisor, der Token hat keine Admin-Rechte),
-   `/api/config/config_entries/entry?domain=mqtt` liefert die Integration „Mosquitto broker",
-   aber **leere `data`** (HA gibt gespeicherte Zugangsdaten nie heraus), und ein HA-Benutzer
-   als Broker-Login wäre nur als bcrypt-Hash vorhanden. Klartext gibt es nur im Add-on-UI.
-   **Wenn der Besitzer zu Hause ist:** *Einstellungen → Add-ons → Mosquitto broker →
-   Konfiguration → `logins`* nachsehen (oder einen Eintrag anlegen) und die Werte mit
-   `getpass` in `ha-app/config.json` schreiben (landet weder in der Shell-History noch im
-   Chat), dann `mqtt.enabled: true`, `systemctl --user restart evcharge-wt.service`, und in
-   HA prüfen, ob `sensor.ev_charging_power` & Co. auftauchen.
+6. **MQTT ist an — erledigt am 25.09.2026.** Der Besitzer hat die Zugangsdaten aus dem
+   Mosquitto-Add-on selbst eingetragen (`set_mqtt_login.py`: fragt mit `getpass` verdeckt ab,
+   schreibt direkt in `ha-app/config.json`, Rechte 600, Sicherung als `.bak`; die Datei ist
+   gitignored). Belegt: direkter CONNACK-Test mit genau dem App-Client → **Code 0 = angenommen**,
+   `mqtt_connected: true`, und in HA **18 Entitäten unter „EV Charger WT", keine ohne Wert**.
+   Zur Vorgeschichte: anonym nimmt der Broker nichts an (CONNACK 5) und der App-Client ist
+   nachweislich korrekt (MQTT-3.1.1-CONNECT geprüft) — der erste Datenversuch des Besitzers wurde
+   mit **Code 5 = nicht autorisiert** abgelehnt, diese Kombination kannte der Broker also nicht.
+   **Zwei Fehler kamen dabei ans Licht — beide in Code, der nie zuvor gelaufen war:**
+   * Die Discovery-Templates für `binary_sensor` „EV charging" und `switch` „control enabled"
+     gaben Jinja-Booleans aus (`False`) — HA erkennt darin weder `ON/OFF` noch `false`, beide
+     Entitäten blieben dauerhaft `unknown`. Jetzt ausgeschrieben, in
+     `tests/test_mqtt_loopback.py` am Quelltext festgenagelt.
+   * **Acht verwaiste retained Discovery-Nachrichten** lagen im Broker: eine ältere Fassung hatte
+     `mode`, `max_current`, `min_current`, `buffer_soc`, `priority_soc`, `plan_energy_kwh` und
+     `decision` als *Sensoren* publiziert (später wurden es *numbers*) plus einen `binary_sensor`
+     statt des `switch`. Sie erzeugen in HA Entitäten ohne Wert. Gelöscht mit
+     `mqtt_discovery_audit.py` (leere Payload, `retain=True`) — HA-Entitäten: **26 → 18**.
+     *Merksatz:* eine retained Discovery-Nachricht überlebt jede Code-Änderung (dieselbe Mechanik
+     wie beim evcc-Rest in Punkt 7, nur im eigenen Gerät). Nach jeder Änderung an
+     `publish_discovery()` lohnt der Audit-Lauf.
 7. **Der evcc-Rest in HA bleibt liegen — der Besitzer räumt ihn selbst auf, „irgendwann mal"**
    (Entscheidung 23.09.2026, ausdrücklich: *nicht* anfassen, nicht nochmal anbieten).
    Zum Nachschlagen, was dort liegt: der Integrationseintrag **`evcc_intg` steht auf
