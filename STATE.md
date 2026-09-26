@@ -611,7 +611,27 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Neustart — die Konfiguration (und damit der Datenabruf) kommt nach, wenn das Ventil wach ist. Ein
   Neuanlernen ist nicht mehr zwingend.**
   **Beweis für den nächsten Durchlauf:** die Zeile `Executing data query spell on Tuya device
-  a4:c1:38:8e:bf:be:09:0e` muss dann im Protokoll stehen.
+  `a4:c1:38:8e:bf:be:09:0e` muss dann im Protokoll stehen.
+* **ES FUNKTIONIERT (26.09., 11:03–11:06) — der Datenabruf-Spruch war die Lösung.** Mit der
+  korrigierten Datei + Neustart füllten sich die Entitäten:
+  ```
+  11:02:59  state=unknown   soll=None  ist=22.0            (Beginn der Werte)
+  11:03:00  state=heat_cool soll=None  ist=22.0  action=heating
+  11:05:24  state=heat_cool soll=None  ist=25.0  action=heating
+  ```
+  **Gegentest des Nutzers:** er hat das Ventil **angepustet** → Display und HA zeigen beide den
+  neuen Wert (22 → 25). Das beweist **Datenpunkt 5 (Ist-Temperatur) einschließlich Umrechnung**.
+  Weitere laufende Entitäten: `kindersicherung` = off, `frostschutz` = off, `hlk_aktion` = heating.
+  **Noch offen: der Sollwert (`soll = None`).** Ein Schreibbefehl von HA aus (11:07, `set_temperature
+  17.0`, Dienst meldet ok) war nach 90 s noch nicht angekommen — erwartbar, das Gerät schläft und
+  nimmt Befehle beim nächsten Wachmoment an. **Zu prüfen: ob das Display danach kurz 17 zeigt.**
+  **Fund vom Display-Foto:** neben „24" ist ein **Schlüssel-Symbol** zu sehen — die **Kindersicherung
+  ist aktiv**, während die Entität `off` meldet. Genau das entspricht dem z2m-Converter
+  (`[7, 'child_lock', lookup({LOCK: false, UNLOCK: true})]`) — **DP 7 ist invertiert**; mein Quirk
+  mappt ihn ohne Inversion. Kleiner, bekannter Korrekturbedarf.
+  Ebenso auf dem Display: Funk-Symbol (verbunden), Hand- und Uhr-Symbol (Bedien-/Zeitprogrammhinweis).
+  **Der Fall ist damit im Kern gelöst**: Fingerprint-Quirk + **`tuya_enchantment(data_query_spell=True)`**
+  an korrekter Stelle in der Kette ist die nachgewiesene Lösung für dieses Ventil.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
