@@ -379,8 +379,12 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Flow-Monitor **und** Dach-CO₂-ESP ein. Beleg (aus dem eigenen Mithörer, Sekunden genau):
   `wifi_status` des Flow-Monitors `OFFLINE → ONLINE` um **07:50:25**, erste Werte **07:49:28** —
   Vorlauf 23,06 °C, Rücklauf 22,19 °C, **Differenz 0,9 °C**. Die Vorhersage „nahe 0" traf genau zu:
-  das Wasser steht, weil nichts fließt. Unabhängige Bestätigung, dass nicht geheizt wird: der
-  Kompressor der Wärmepumpe `dach_ap22393` meldet **0 W**. Damit ist die Bedingung der verpackten
+  das Wasser steht weitgehend, weil nicht geheizt wird. **Korrektur des Nutzers (26.09.):** der
+  Flow-Monitor hängt an der **Gasheizung**, die mit der Daikin-Wärmepumpe `dach_ap22393`
+  **nichts zu tun hat**. Deren 0 W Kompressorleistung ist also **keine** Bestätigung für den
+  Heizkreis, sondern eine getrennte Anlage — der Assistent hatte beide zusammengezogen (beide
+  tragen „Dach" im Namen) und das als Bestätigung verkauft; **zurückgenommen**. Die Messwerte
+  selbst und der Fix bleiben davon unberührt. Damit ist die Bedingung der verpackten
   Kachel erfüllt — **das Rendern hat der Nutzer zu prüfen**, das ist der einzige offene Rest.
   Der **Dach-CO₂-Sensor**, seit 19.09. `unavailable`, war **kein Defekt**, sondern das
   ausgeschaltete Gerät: jetzt 751 ppm / 44 % / 21,7 °C. Alle vier ESPHome-Geräte (Flow, WZ-CO₂,
