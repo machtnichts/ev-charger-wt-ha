@@ -779,6 +779,22 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   **Was das Neuanlernen bewirkt hat:** die Datei war längst richtig; gefehlt hat allein die
   **Gerätekonfiguration**, die den Datenabruf-Zauberspruch wirft. Merke: **Ein HA-Neustart löst sie
   nicht aus, ein Re-Pair schon.**
+* **✅ KOMPLETT (26.09., 12:34) — halbe Grad bestätigt, Kindersicherung stört den Funkweg nicht.**
+  Der Nutzer hat am Display geprüft: **`set_temperature 19.5` → Display zeigt `19,5`**.
+  * **Das Gerät arbeitet in *halben* Grad.** Geschrieben 11,4 → Display zeigte **11** (krumme Werte
+    werden *gerundet*), geschrieben 19,5 → Display zeigt **19,5**. Meine frühere Behauptung
+    „ganze Grad" war aus *einem* gerundeten Wert geschlossen — zu wenig.
+  * **Die Kindersicherung blockiert nur die *Tasten* am Gehäuse, nicht den Funkweg.** Bei *aktiver*
+    Sperre (Schlüssel im Display sichtbar) hielten 14,0 und 19,5 jeweils minutenlang, und 19,5 kam
+    **am Display** an. Das ist genau das gewünschte Verhalten: **Kind kommt nicht dran, HA schon.**
+    Meine frühere Ableitung („die Sperre verwirft Schreibbefehle") stützte sich auf Rücksprünge, die
+    auch vom *Gerätebericht* stammen können — **nicht belastbar**.
+  * **Wichtig fürs Wiederholen:** Ein **Re-Pair schaltet die Kindersicherung wieder ein**
+    (im Mithörer um **12:24:39**). Nach jedem Neuanlernen muss der Dauermodus erneut gesetzt werden.
+  * **Der HA-Schalter `…_kindersicherung` zeigt den echten Zustand nicht** — er stand durchgehend auf
+    `off`, während das Gerät sperrte. Nur das Display ist maßgeblich.
+  **Endstand:** Betriebsart `heat`, Sollwert schreib- und lesbar (halbe Grad), Ist-Temperatur,
+  Ventilzustand korrekt, Batterie %, Kindersicherung an und trotzdem ferngesteuert. Fall geschlossen.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
