@@ -292,7 +292,8 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Betrieb, Zuordnung noch offen: es gibt daneben den lebenden Zwilling `AqaraSensorSZTür` — dessen
   Öffnungs-Entität steht dauerhaft auf **offen**, weil die Schlafzimmertür praktisch immer gekippt
   ist; das ist korrekt und **kein** Defekt, Temperatur und Batterie melden frisch). Neu
-  aufgefallen und noch ungeklärt: **`Thermostat-Ralf-Keller-Party-Z`** (still seit 20.02.2026).
+  aufgefallen und **aufgeklärt am 26.09. — siehe den Eintrag zu Ralfs TRV weiter unten** (still seit
+  20.02.2026, 217 Tage, keine `climate`-Entität mehr).
 * **Zwei Wassersensoren haben jetzt einen fetten Telegram-Alarm** (HA-nativ, gleicher Bot und
   gleiche Gruppe wie die Batterie-Alarme): `wasser_leck_heizung` (`binary_sensor.wassersensor_heizung`,
   HOBEIAN ZG-222Z) und `wasser_leck_waschmaschine` (`binary_sensor.tz3000_upgcbody_snzb_05`), dazu
@@ -389,6 +390,24 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Der **Dach-CO₂-Sensor**, seit 19.09. `unavailable`, war **kein Defekt**, sondern das
   ausgeschaltete Gerät: jetzt 751 ppm / 44 % / 21,7 °C. Alle vier ESPHome-Geräte (Flow, WZ-CO₂,
   Dach-CO₂, Keller-CO₂) sind damit gesund. **Damit ist der Punkt „Dach-CO₂ unavailable" erledigt.**
+* **Ralfs TRV geklärt (26.09.): kein Kontakt seit 20.02.2026 — 217 Tage.** ZHA selbst führt ihn als
+  `available=False`, `last_seen = 20.02.2026 20:07 UTC`. Das Feld ist geeicht (lebende Geräte:
+  Steckdose Mascha Minuten, Button 07:41, Fenster-Sensoren 07:21/07:17) und damit belastbar.
+  **Zusatzbefund:** für den Tuya-TS0601 (`a4:c1:38:8e:bf:be:09:0e`) existiert **keine
+  `climate`-Entität** — nur `rssi` und `lqi` (beide `disabled_by: integration`) plus die
+  Firmware-Update-Entität. Er ist also derzeit **nicht steuerbar**, auch wenn er zurückkäme.
+  **Ursache offen:** leere Batterie, ausgebaut, oder kein Weg ins Netz. Die Kellerlampen sind
+  „Wandschalter aus" (Nutzer) — damit ist als Erklärung auch denkbar, dass die Route fehlt;
+  **Test:** Lichtschalter dort länger an, dann müsste er sich binnen Stunden melden.
+  Das ZHA-Netz ist gesund (413 Entitäten, 247 mit Wert, jüngste Meldung sekundenalt) — die Stille
+  ist geräteseitig, nicht netzweit.
+  **Stille Geräte, Stand 26.09. (7+ Tage):** Leuchte Ecke Wohnzimmer 11.07. (77 d), Eingangstür
+  27.05. (121 d, Zelle bestellt), ElektroHeizungKeller 02.05. (147 d), Ralfs TRV 20.02. (217 d),
+  HOBEIAN ZG-101ZL 14.06. (103 d) und 23.09.2025 (368 d), TS0203 21.09.2025 (369 d) — die letzten
+  drei sind die zuvor deaktivierten Karteileichen. `Steckdose PC Lea` fiel am 23.09. aus (3 Tage,
+  unter der 7-Tage-Schwelle); die Notiz vom 25.09. stimmt damit.
+  **Nebenbei:** die vier Daikin-Splits heißen `climate.dach_ap22393`, `kevin_ap02845`,
+  `lea_ap27941`, `wzr_ap86576` (alle `off`) — nur der SONOFF TRVZB auf dem Heizungs-Board ist `heat`.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
