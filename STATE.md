@@ -520,12 +520,18 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
 * **Ventil: eine ganze Stunde Beobachtung, kein einziger Wert (26.09., 06:30–07:30).** Der Mithörer
   (Takt 20 s) protokollierte **keine einzige Zustandsänderung**; `soll`/`ist` blieben durchgehend
   `None`. Das Gerät war dabei durchgehend gesund und wurde sogar besser: `last_seen` jeweils
-  sekundenalt, **LQI 160 → 176**, **RSSI −60 → −56** (ausgezeichneter Link). Damit sind **Gerät und
-  Funk ausgeschlossen** — es kommen schlicht keine Daten. Deckt sich mit dem Community-Befund
-  („Kalibrierungsschleife", nur Batterie-Entfernen hilft).
-  **Das Debug-Mitlesen ist wieder eingeschaltet** (`zigpy.zcl`, `zhaquirks.tuya`,
-  `homeassistant.components.zha` auf `debug`) und bleibt an, bis der Nutzer im Protokoll nach
-  `Tuya` gesucht hat — **danach unbedingt wieder auf `warning` zurücksetzen**.
+  sekundenalt, **LQI 160 → 176**, **RSSI −60 → −56** (ausgezeichneter Link). **Wichtige Korrektur
+  (Nutzer hat zu Recht nachgebohrt):** daraus folgt **nicht**, dass „keine Daten ankommen". Es sind
+  zwei verschiedene Fehler — **(A)** das Gerät sendet gar nichts (nur Netzpakete), **(B)** es sendet
+  Daten, aber mit **anderen Datenpunkt-Nummern** als in meinem Quirk, oder **(C)** die richtigen
+  Daten kommen an und die Entität verarbeitet sie nicht. `last_seen` beweist nur **Erreichbarkeit**,
+  nicht Datentransfer — ein Schlafgerät hält ihn mit reinen Funk-Polls frisch. Und meine frühere
+  Begründung („kein Eintrag im Systemlog") war **wertlos**: in der Quelle
+  (`zhaquirks/tuya/__init__.py`) wird ein unbekannter Tuya-Frame mit **`_LOGGER.debug`**
+  protokolliert („Unrecognised command: %x"), **nicht** als Warnung — im Systemlog kann er also
+  gar nicht erscheinen. **Das Debug-Mitlesen läuft weiter** (`zigpy.zcl` und `zhaquirks.tuya` auf
+  `debug`, `homeassistant.components.zha` zurück auf `warning`), damit das Protokoll übersichtlich
+  bleibt; **danach alles auf `warning` zurücksetzen**.
   **Offene Schritte:** (1) Nutzer sucht unter Einstellungen → System → Protokolle nach `Tuya` und
   schickt ein Bild: Zeilen vorhanden → Zuordnung anpassen; keine Zeilen → sauber neu anlernen.
   (2) Offene Frage: steht „CL" noch im Display (Kindersicherung; aufheben mit **+ und −** zusammen).
