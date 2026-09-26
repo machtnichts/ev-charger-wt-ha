@@ -662,6 +662,22 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   **Merkregel für künftige Rate-Datenpunkte: Attribut = `0xEF00` + Datenpunkt-Nummer.**
   Dauerhaft leere Entitäten (Gerät sendet diese DPs nicht): `pi_heating_demand`,
   `setpoint_change_source`, `setpoint_change_source_timestamp` — nur kosmetisch.
+* **SELBST GEFUNDENER ZUORDNUNGSFEHLER (26.09., 11:48) — `running_state` war invertiert.** Der Nutzer
+  fragte, warum die Entität „Heizbetrieb" meldet, wenn Soll 11,4 und Ist 23 — richtige Frage, sie
+  deckte einen Fehler auf. Verlauf als Beweis:
+  ```
+  11:40:36  soll=35,0  ist=22,0  action=idle      ← 35 über 22, müsste HEIZEN sein
+  11:46:06  soll=11,4  ist=23,0  action=heating   ← 11,4 unter 23, müsste LEERLAUF sein
+  ```
+  Ursache: **die Geschwister-Familie `tuya_trv.py` enthält für Datenpunkt 3 BEIDE Varianten** —
+  zwei Fingerprints nutzen `Heat_State_On if x`, zwei nutzen `if not x`. Kopiert wurde die
+  **invertierte**; korrekt ist `if x` (bestätigt durch die beobachtete Korrelation). Geändert in
+  `local-tools/ts0601_trv_noixx2uz.py` (Zeile 46, ein Wort).
+  **Wichtig:** `hvac_action` wird **nicht** von HA berechnet, sondern ist der vom Gerät gemeldete
+  Ventilzustand (DP 3). HA kann daher nicht „von selbst" auf Leerlauf gehen — es zeigt, was das
+  Ventil behauptet.
+  **Lehre (als Regel 10 in der Skill-Referenz):** aus einer Familie nie die Variante übernehmen, die
+  gerade im Blick ist, sondern gegen die **beobachtete Korrelation** prüfen.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
