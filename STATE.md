@@ -354,6 +354,16 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
     dabei:** die neue Karte wurde vor dem Umbenennen gebaut und zeigte auf die alten Batterie-IDs —
     aufgefallen beim Referenzcheck gegen `/api/states` (2 unbekannte Entitäten je Board), korrigiert,
     danach 0 unbekannte Referenzen. Das Aussehen selbst ist nicht verifiziert (kein HA-Login).
+* **Fenster/Türen-Board erweitert (25.09.):** die Ansicht `fenster` des Boards `fenster-turen`
+  hat unten einen Bereich **„Batterien"** — Überschriftskarte mit `mdi:battery-40` plus die Liste
+  aller zehn Einheiten-Batterien, in **derselben Raumreihenfolge** wie die Öffnungsliste darüber.
+  Stil nach `treppe-alarm/0` (dort: heading „Batterien" + schlichte Entitätsliste). Alle zehn
+  Einheiten haben eine Batterie-Entität, `sensor.door_batterie` (Eingangstür) steht wie erwartet
+  auf `unavailable`, bis die CR1632 da ist. 20 Referenzen geprüft, **keine** unbekannt, übriger
+  Ansichtsinhalt byteweise unverändert. Nächste Zellen laut Stand: Keller Partyraum 66 %,
+  Toilette 69,5 %, Balkontür 73 %. **Ungeprüft:** ob eine Überschriftskarte außerhalb von
+  Sections rendert — die Ansicht nutzt keine Sections; falls sie nicht erscheint, ersetzt ein
+  Kartentitel die Überschrift.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
