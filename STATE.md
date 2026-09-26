@@ -535,6 +535,25 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   **Offene Schritte:** (1) Nutzer sucht unter Einstellungen → System → Protokolle nach `Tuya` und
   schickt ein Bild: Zeilen vorhanden → Zuordnung anpassen; keine Zeilen → sauber neu anlernen.
   (2) Offene Frage: steht „CL" noch im Display (Kindersicherung; aufheben mit **+ und −** zusammen).
+* **Ventil: der Tagesbefund in Kurzform (26.09., bis ~10:40).** Das Gerät ist **erreichbar und
+  meldet sich**, liefert aber **keine Daten** und nimmt **keine** an. Belege:
+  - Aus dem Protokoll (Suche nach der IEEE) gibt es **vier** Zeilen, alle am **26.09. 08:31:41 und
+    08:32:02**: `Device 0xeec6 (a4:c1:38:8e:bf:be:09:0e) joined the network` — der **Beitritt nach
+    Batteriewechsel/Neustart**, danach **nichts**. Wichtig: das sind **INFO**-Zeilen; reine
+    Funk-Polls protokolliert zigpy gar nicht, „nichts weiter" heißt also nur: **kein ZCL-Verkehr**.
+  - **`last_seen` wandert in 15-Minuten-Schritten** (10:19:30 → 10:34:21) — das ist das
+    Prüfintervall des Ventils. Es ist also wach und pollt.
+  - **Zwei Schreibbefehle von HA aus ohne jede Wirkung:** 10:19:30 `set_temperature 11.5` und
+    ~10:35 `set_temperature 12.5` — Entitäten blieben `unknown`, 15-Minuten-Mithörer ohne einen
+    Wechsel, Display zeigte weiter 15. **`last_seen` bewegt sich also, während nichts ankommt und
+    nichts ankommt an.**
+  - Nutzer berichtet: Display zeigt **15** (vermutlich Sollwert; vorher hatte er 11 gesetzt) und
+    vorher **"CL"** (Kindersicherung) — der Autor des Converters beschreibt genau solche Zustände.
+  **Wichtige Lehre für die Suche:** zigpy nennt Geräte in Debug-Zeilen mit der **Kurzadresse**
+  (`0xeec6`), nicht mit der vollen IEEE — deshalb fand die IEEE-Suche nur die vier Zeilen.
+  **Offen:** Suche nach `eec6` und `0xef00` um 10:19/10:35 im Protokoll (zeigt, ob der Befehl
+  überhaupt rausgeht und ob eine Antwort kommt). Debug steht noch auf `debug` für `zigpy.zcl` und
+  `zhaquirks.tuya` — **danach zurücksetzen**.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
