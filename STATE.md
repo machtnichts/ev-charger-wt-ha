@@ -576,6 +576,22 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   die **IEEE** und ist damit direkt suchbar. Ein manueller Versuch, `0x03` per
   `zha.issue_zigbee_cluster_command` zu schicken, lief in einen HTTP 504 (Dienst wartet auf Antwort,
   Gerät schläft) — der Befehl steckt womöglich in der Warteschlange.
+* **Korrektur und neue Reihenfolge (26.09., ~10:55) — der Spruch wird nur EINMAL geworfen.** Der
+  Neustart um 10:47 lief ins Leere: die Entitäten wurden zwar neu aufgebaut (10:47:48), aber das
+  Ventil **schlief** dabei (`last_seen` 10:34 → 10:49), LQI/rssi zunächst leer. Der Zauberspruch ist
+  ein **Befehl an das Gerät** und wird **einmal bei der Konfiguration** geworfen — er wird **nicht
+  wiederholt**. Genau wie der manuelle Versuch, der in einen **Timeout** lief. **Folgerung: der
+  Neustart kann das prinzipiell nicht leisten, wenn das Gerät dabei schläft. Beim *Anlernen* ist das
+  Gerät wach — dort wird der Spruch zugestellt.** Also: Datei ersetzen → **Gerät entfernen und neu
+  anlernen** (nicht nur neu starten).
+  **Zusätzlich korrigiert:** `.tuya_enchantment(data_query_spell=True)` stand in meiner Fassung
+  *ganz früh* in der Kette; alle vorhandenen Tuya-Quirks (z. B. `tuya_trv.py`, `tuya_sensor.py`,
+  `ty0201.py`) setzen es **kurz vor `skip_configuration()`/`add_to_registry()`**. Nach Prüfung des
+  Builders ist `device_class()` nur ein einfacher Setter (kein Reset) — die frühe Position war also
+  **vermutlich unschädlich**, aber die Konvention ist jetzt eingehalten (93 Zeilen, Syntax geprüft,
+  weiter gitignored). Ausdrücklich als **Vorsichtsmaßnahme** dokumentiert, nicht als bewiesene
+  Ursache. `skip_configuration` betrifft laut Quelle nur die **Reporting-Konfiguration**, nicht die
+  Zaubersprüche.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
