@@ -421,6 +421,18 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   **falsch**; ob `ElektroHeizungKeller` ein Router ist, ist offen.
   **Nebenbei:** die vier Daikin-Splits heißen `climate.dach_ap22393`, `kevin_ap02845`,
   `lea_ap27941`, `wzr_ap86576` (alle `off`) — nur der SONOFF TRVZB auf dem Heizungs-Board ist `heat`.
+  **Warum der Tuya keine Entitäten hat (geprüft am 26.09.):** sein Fingerprint
+  `_TZE284_noixx2uz` kommt im **gesamten** Quirks-Repo `zigpy/zha-device-handlers` (Branch `dev`)
+  **nicht** vor — daher nur rssi/lqi. Auch **zigbee2mqtt** hat ihn nicht in der Gerätedatenbank,
+  dort laufen drei offene „External Converter“-Anfragen (#29450, #30906, #31060). Die Community-
+  sammlung `dlnraja/com.tuya.zigbee` führt ihn als **`radiator_valve`** — es ist also ein
+  Heizkörperventil. **Gangbarer Weg, falls er genutzt werden soll:** der Quirk `tuya/tuya_trv.py`
+  kennt schon sechs `_TZE284`-TRVs (`c6wv4xyo`, `ne4pikwm`, `o3x45p96`, `ogx8u5z6`, `p3dbf6qs`,
+  `ymldrmzx`), alle nach dem Muster `TuyaThermostat` + `MODELS_INFO` — eine lokale Kopie mit seinem
+  Fingerprint in `/config/zha_quirks/` wäre wenige Zeilen, die **Datenpunkte** müssten aber gegen die
+  z2m-Converter-Threads verifiziert werden. **Voraussetzung in jedem Fall:** das Gerät ist seit
+  217 Tagen nicht im Netz und muss **neu angelernt** werden. Reihenfolge: erst neu anlernen (billig,
+  vielleicht erkennt ZHA inzwischen mehr), dann ggf. Quirk, sonst Karteileiche.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
