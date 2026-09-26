@@ -718,6 +718,17 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   das Ventil **gesperrt** (nicht entsperrt), der Nutzer musste trotzdem physisch lange drücken.
   **Nächster Schritt (Nutzer):** Handbuch — gibt es einen **Dauermodus** für die Kindersicherung?
   Ohne Dauermodus ist „Fenster auf → Heizung zu" über diesen Weg nicht automatisierbar.
+* **KORREKTUR IST LIVE (26.09., ~11:57) — bewiesen durch einen Wechsel bei *gleichem* Datenpunkt.**
+  Der breite Mithörer zeigt: vor dem Einspielen stand bei `soll=35,0 / ist=22,0` die Aktion `idle`,
+  nach dem Neustart (11:52:53) steht bei `soll=11,4 / ist=23,0` die Aktion `heating` — **umgekehrt zur
+  alten Zuordnung bei derselben Datenpunkt-Bedeutung**. Die Entität deutet den Gerätewert jetzt also
+  anders, d. h. **die korrigierte Datei ist geladen und die Gerätekonfiguration ist durchgelaufen**.
+  Kein weiterer Neustart nötig.
+  Aktueller Gerätezustand: `running_state` = „Ventil offen" (`heating`), obwohl der Sollwert 11,4
+  unter der Raumtemperatur 23 liegt. Zwei mögliche Erklärungen — Ventil mechanisch noch offen, oder
+  das Gerät meldet seinen eigenen Zustand unabhängig vom Sollwert. Nur am Heizkörper prüfbar.
+  Nebenbefund: die Entität `sensor.…_hlk_aktion` wechselt synchron mit `hvac_action` — beide bilden
+  denselben Datenpunkt 3 ab.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
