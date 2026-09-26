@@ -729,6 +729,18 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   das Gerät meldet seinen eigenen Zustand unabhängig vom Sollwert. Nur am Heizkörper prüfbar.
   Nebenbefund: die Entität `sensor.…_hlk_aktion` wechselt synchron mit `hvac_action` — beide bilden
   denselben Datenpunkt 3 ab.
+* **KINDERSICHERUNG GELÖST — dauerhaft aus (26.09., ~12:05, per Handbuch).** Der Nutzer hat im
+  Handbuch den **Dauermodus** gefunden: **CL ist jetzt dauerhaft aus, Drehen geht sofort.** Damit ist
+  der Blocker für „Fenster auf → Heizung zu" weg — Schreibbefehle sollten jetzt jederzeit greifen.
+  **Aber direkt danach klemmt die *andere* Richtung:** der Nutzer stellt **20 °C** am Gerät ein und
+  **HA zeigt weiter 11,4**. Die Entität wurde zuletzt **11:53:17** aktualisiert — beim Neustart bzw.
+  der Gerätekonfiguration — und hat danach **13 Minuten lang nichts gemeldet**, obwohl am Gerät
+  gedreht wurde. Vor dem Neustart kamen alle Drehungen innerhalb von Sekunden an.
+  **Untersuchen:** sendet das Gerät nicht mehr (langer Schlaf nach der Konfiguration? Zauberspruch
+  wirkt nur einmal?), oder sendet es und HA nimmt es nicht an (Zuordnung nach der Änderung)?
+  Beobachtung läuft; falls es schweigt, klärt das Protokoll die Frage (`0xef00`-Zeilen).
+  **Wichtig für die Automatik:** die *Schreibrichtung* ist jetzt frei, aber die *Leserichtung* muss
+  zuverlässig sein, sonst regelt der Controller auf veraltete Werte.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
