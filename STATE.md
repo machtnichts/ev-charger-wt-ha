@@ -678,6 +678,27 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Ventil behauptet.
   **Lehre (als Regel 10 in der Skill-Referenz):** aus einer Familie nie die Variante übernehmen, die
   gerade im Blick ist, sondern gegen die **beobachtete Korrelation** prüfen.
+* **DURCHBRUCH ZUR SCHREIBRICHTUNG (26.09., 11:44–11:49) — die Kindersicherung blockiert fremde
+  Schreibbefehle.** Der Nutzer formulierte es selbst: „die Übertragung TRV → HA klappt super, aber
+  andersrum scheint es zu stocken" und „ich MUSS erst Kindersicherung ausmachen und dann drehen".
+  Ein Schreibtest **bei entsperrtem Ventil** blieb stehen:
+  ```
+  11:44:38  vorher SOLL=35.0
+  set_temperature 11.4 -> ok
+  +20s … +80s   SOLL=11.4  action=idle
+  +100s … +240s SOLL=11.4  action=heating   ← 4 Minuten stabil, KEIN Rückfall
+  ```
+  Vorher (bei gesperrtem Ventil) kippte jeder Schreibwert nach ~70 s auf den Gerätewert zurück. Das
+  Muster „Wert erscheint in HA, verschwindet beim nächsten Gerätebericht" ist damit die **Sperre**,
+  nicht eine falsche Adresse. **Aber:** die Trennung ist noch nicht sauber, weil nicht protokolliert
+  ist, ob das Ventil im Moment jedes Fehlversuchs gesperrt war. **Sauberer Test:** Nutzer entsperrt
+  am Gerät, fasst es **nicht** mehr an, dann schreiben; danach zusätzlich den `child_lock`-Schalter
+  aus HA und am Display prüfen, ob **HA überhaupt entsperren kann** (nach dem `turn_on` um 11:08:43
+  musste er trotzdem physisch lange drücken). **Das ist die Kernfrage für die Fenster-Automatik**:
+  wenn HA nur sperren, aber nicht entsperren kann, braucht der Ablauf „entsperren → Wert → sperren"
+  einen anderen Weg.
+  Nebenbefund aus demselben Test: der Ventilmotor braucht ~100 s, bis `running_state` von „heizt" auf
+  „Leerlauf" umspringt — die Verzögerung ist Mechanik, kein Fehler.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
