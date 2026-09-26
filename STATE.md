@@ -364,6 +364,17 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Toilette 69,5 %, Balkontür 73 %. **Ungeprüft:** ob eine Überschriftskarte außerhalb von
   Sections rendert — die Ansicht nutzt keine Sections; falls sie nicht erscheint, ersetzt ein
   Kartentitel die Überschrift.
+* **Heizungs-Board: die Gauge „Delta Vorlauf–Rücklauf" verpackt (26.09.).** Die Kachel meldete
+  „Entität ist nicht-numerisch", weil `sensor.heizung_differenz_vor_rucklauf` `unknown` liefert: es
+  ist ein Template-Helper (Config-Entry „Heizung: Differenz Vor- Rücklauf", domain `template`,
+  state `loaded`) über die beiden Flow-Monitor-Sensoren, und der ESP `esp32_c3_web_a8dfa8` ist
+  **absichtlich aus** (keine Heizsaison). Der Sensor ist also nicht defekt, sondern ehrlich — ein
+  0-Wert wäre erfunden. **Fix:** die Gauge steckt jetzt in einer `conditional`-Karte mit zwei
+  Bedingungen (`state_not: unknown`, `state_not: unavailable`) und erscheint von selbst wieder,
+  wenn geheizt wird. **Beleg:** die ESPHome-Integration ist gesund (der zweite ESP
+  `esp_wroom_32_keller` liefert 3/3 Werte), alle 18 Referenzen der Ansicht gültig, 6 Karten vorher
+  wie nachher. Ungeprüft: das Rendern (kein HA-Login). Die Karte „Heizung Übersicht" zeigt bewusst
+  weiter „nicht verfügbar" — sie sagt, warum die Differenz fehlt.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
