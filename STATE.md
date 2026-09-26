@@ -390,7 +390,14 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Der **Dach-CO₂-Sensor**, seit 19.09. `unavailable`, war **kein Defekt**, sondern das
   ausgeschaltete Gerät: jetzt 751 ppm / 44 % / 21,7 °C. Alle vier ESPHome-Geräte (Flow, WZ-CO₂,
   Dach-CO₂, Keller-CO₂) sind damit gesund. **Damit ist der Punkt „Dach-CO₂ unavailable" erledigt.**
-* **Ralfs TRV geklärt (26.09.): kein Kontakt seit 20.02.2026 — 217 Tage.** ZHA selbst führt ihn als
+* **Der stumme TRV in Ralfs Partykeller geklärt (26.09.) — es ist ein Tuya TS0601, nicht der SONOFF.**
+  **Wichtig, um Verwechslungen zu vermeiden:** die Karte **„Ralfs TRV"** auf dem Heizungs-Board ist
+  **`climate.sonoff_trvzb_thermostat`** — `mode=heat`, `action=idle`, Soll **7,0 °C** (Frostschutz),
+  Ist **20,9 °C**. Das Gerät **lebt** und ist ein **anderes** als das stumme. Die beiden Automationen
+  `trv_kellerparty_fenster_auf_heizung_zu` und `trv_kellerparty_fensterlogik_profi` hängen am SONOFF.
+  Das **stumme** Gerät ist der **Tuya TS0601** `Thermostat-Ralf-Keller-Party-Z`
+  (`a4:c1:38:8e:bf:be:09:0e`), dem der Assistent zunächst gefolgt ist; offenbar der **Vorgänger**,
+  abgelöst vom SONOFF. ZHA führt ihn als
   `available=False`, `last_seen = 20.02.2026 20:07 UTC`. Das Feld ist geeicht (lebende Geräte:
   Steckdose Mascha Minuten, Button 07:41, Fenster-Sensoren 07:21/07:17) und damit belastbar.
   **Zusatzbefund:** für den Tuya-TS0601 (`a4:c1:38:8e:bf:be:09:0e`) existiert **keine
@@ -405,7 +412,8 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Das ZHA-Netz ist gesund (413 Entitäten, 247 mit Wert, jüngste Meldung sekundenalt) — die Stille
   ist geräteseitig, nicht netzweit.
   **Stille Geräte, Stand 26.09. (7+ Tage):** Leuchte Ecke Wohnzimmer 11.07. (77 d), Eingangstür
-  27.05. (121 d, Zelle bestellt), ElektroHeizungKeller 02.05. (147 d), Ralfs TRV 20.02. (217 d),
+  27.05. (121 d, Zelle bestellt), ElektroHeizungKeller 02.05. (147 d), Tuya-TS0601
+  (Ralf-Keller-Party-Z) 20.02. (217 d),
   HOBEIAN ZG-101ZL 14.06. (103 d) und 23.09.2025 (368 d), TS0203 21.09.2025 (369 d) — die letzten
   drei sind die zuvor deaktivierten Karteileichen. `Steckdose PC Lea` ist seit dem 23.09. ohne
   Kontakt — **absichtlich: sie ist nicht angeschlossen** (Nutzer), also kein Defekt. Die frühere
