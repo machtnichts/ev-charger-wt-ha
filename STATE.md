@@ -758,6 +758,27 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   **Nebenbefund:** Der 13,0-Schreibbefehl hielt 150 s ohne Rückfall — bei **schweigendem** Gerät ist
   das **kein** Erfolgsnachweis.
   **Merke:** HA-Protokolldateien sind **UTC** benannt (`10-09-17` = 12:09 Berlin).
+* **✅ GELÖST (26.09., 12:27) — Neuanlernen hat den Zauberspruch neu geworfen, alles läuft.**
+  Bestandsaufnahme **nach** dem Re-Pair:
+  ```
+  climate:  modus=heat  SOLL=5,0 → (Schreibbefehl 11,4) → Gerät zeigt 11  ist=24,0  action=idle  sperre=off
+  neu:      sensor.…_z_batterie = 100.0   (der ergänzte Datenpunkt 6)
+  ```
+  **Der Nutzer hat am Display bestätigt, dass der Wert ankam** („du hast es auf 11 gestellt bekommen,
+  war vorher 5"). Damit ist die **Schreibrichtung** erstmals *am Gerät* bewiesen — nicht nur als
+  Anzeige in HA.
+  **Seine 0,5-Schritt-Theorie ist BESTÄTIGT:** geschrieben 11,4 → das Gerät zeigt **11** und rundet
+  auf seine Stufen. Krumme Werte sind also **nicht** falsch, sie werden gerundet.
+  **Und die `running_state`-Korrektur wirkt:** bei Soll 11 < Ist 24 meldet die Aktion **`idle`** —
+  vorher hätte die invertierte Zuordnung `heating` gesagt. Genau die Logik, die der Nutzer gefordert
+  hatte.
+  **Vollständiger Endstand:** Betriebsart `heat`, Soll/Batterie/Ist werden übertragen, Schreiben
+  funktioniert, Kindersicherung dauerhaft aus, Batterie 100 %.
+  **Weg für die Fenster-Automatik:** ein Sperr-Schalter ist **nicht** nötig — es genügt, beim
+  Fensteröffnen einen niedrigen Sollwert (z. B. 5 °C) zu schreiben. Das ist jetzt belegt.
+  **Was das Neuanlernen bewirkt hat:** die Datei war längst richtig; gefehlt hat allein die
+  **Gerätekonfiguration**, die den Datenabruf-Zauberspruch wirft. Merke: **Ein HA-Neustart löst sie
+  nicht aus, ein Re-Pair schon.**
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
