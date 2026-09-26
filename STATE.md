@@ -449,6 +449,21 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Heizkörper und nutzt Ventile für „Fenster auf → Heizkörper zu", deshalb lohnt der Weg. **Wenn es
   funktioniert, wäre ein PR an `zigpy/zha-device-handlers` der nächste Schritt** (eine Zeile in der
   Familie, plus Löschen der lokalen Kopie).
+* **Quirk nachweislich geladen (26.09.) — vor dem Anlernen geprüft.** Beleg: `zhaquirks/__init__.py`
+  setzt `loaded = True` **nur** im `else`-Zweig nach fehlerfreiem `exec_module` (Zeile 611) und loggt
+  dann bei 618 „Loaded custom quirks…“; im Systemlog (WebSocket `system_log/list` — **nicht**
+  `/api/error_log`, den Endpunkt gibt es nicht mehr, HTTP 404) steht diese WARNUNG um **08:13:39**
+  von heute, und es gibt **keinen** Eintrag „Unexpected exception importing custom quirk“. Die Datei
+  ist also fehlerfrei importiert. **Damit ist auch bewiesen, dass der `configuration.yaml`-Weg
+  trägt:** die Optionen des ZHA-Config-Entry sind `null`, der Pfad kam von dort.
+  Nebenbei aus demselben Log: der Flow-Monitor-ESP hat die IP **192.168.178.28** (um 08:13:41 eine
+  einmalige aioesphomeapi-Verbindungswarnung, Neustart-Race — danach liefert er); um 08:13:44 eine
+  Template-Warnung **`'batt_low' is undefined`** (irgendwo referenziert eine Vorlage eine nicht
+  definierte Variable, noch nicht gefunden — kein Dateizugriff auf /config); dazu Modbus-
+  Einheitenwarnungen für `sensor.sdm630_*` (`VAR`, `kvarh`, leeres `power_factor`) — kosmetisch.
+  **Die Methode ist als Skill-Referenz gesichert:**
+  `home-assistant-integration/references/unsupported-zigbee-device.md`.
+  **Nächster Schritt:** Ventil anlernen, danach Ist-Temperatur und Sollwert gegenprüfen.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
