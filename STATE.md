@@ -480,6 +480,24 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   oder ein Sollwert-Schreibvorgang (ZHA reiht Befehle für Schlafgeräte ein).
   **Letzter Prüfschritt:** Ist-Temperatur gegen ein bekanntes Thermometer, Sollwert schreiben und
   **am Gerät** kontrollieren. Erst damit ist die Datenpunkt-Zuordnung verifiziert.
+* **Zwischenstand Ventil (26.09., ~08:35): Entität hängt, ZHA-Neuladen ist der nächste Schritt.**
+  Der Quirk griff (s.o.), aber die Entitäten kamen nie hoch: `climate.thermostat_ralf_keller_party`
+  blieb `unavailable` (`soll/ist=None`), ebenso `sensor.…_hlk_aktion`; die übrigen Sensoren `unknown`.
+  Die Entstehungs-Historie zeigt den Grund: `unknown` **08:19:14** → `unavailable` **08:19:27** — die
+  Entität wurde angelegt, während das Gerät noch nicht fertig war (bekanntes Tuya/ZHA-Muster).
+  Das Gerät selbst ist gesund: `available: True`, `last_seen` wandert (08:21:24), LQI 156.
+  **Versucht:** (1) `homeassistant.update_entity` auf alle Entitäten — brachte die Sensoren von
+  `unavailable` auf `unknown`, aber **keine Datenpunkte**: die `off`-Werte der beiden Schalter können
+  Standardwerte sein, ein Gerätebericht ist **nicht** nachgewiesen. (2) Deaktivieren/Reaktivieren über
+  die Registry (`disabled_by: user` → `None`) — Ergebnis: die Entitäten sind wieder *aktiviert*,
+  erscheinen aber erst nach einem **Neuladen der ZHA-Integration**. Das ist jetzt der ausstehende
+  Schritt und wartet auf sein Okay (Zigbee setzt dabei ~30 s aus, Alarme und Taster sind so lange
+  blind). Der Nutzer hat **20 °C am Ventil** eingestellt; in HA ist das noch nicht sichtbar — sobald
+  die Entität lebt, muss dort **20,0** stehen (das ist der DP-4-Test von der Geräteseite).
+  **Beinahe-Unfall, dokumentiert:** Ein generiertes Skript enthielt versehentlich einen
+  `homeassistant.turn_off`-Aufruf **ohne Ziel** — in HA schaltet das *alle* schaltbaren Geräte ab.
+  Vor dem Ausführen bemerkt und entfernt. Regel jetzt in der Skill-Referenz
+  `home-assistant-integration/references/service-call-safety.md`.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
