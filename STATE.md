@@ -626,9 +626,16 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   17.0`, Dienst meldet ok) war nach 90 s noch nicht angekommen — erwartbar, das Gerät schläft und
   nimmt Befehle beim nächsten Wachmoment an. **Zu prüfen: ob das Display danach kurz 17 zeigt.**
   **Fund vom Display-Foto:** neben „24" ist ein **Schlüssel-Symbol** zu sehen — die **Kindersicherung
-  ist aktiv**, während die Entität `off` meldet. Genau das entspricht dem z2m-Converter
-  (`[7, 'child_lock', lookup({LOCK: false, UNLOCK: true})]`) — **DP 7 ist invertiert**; mein Quirk
-  mappt ihn ohne Inversion. Kleiner, bekannter Korrekturbedarf.
+  ist aktiv**. **KORRIGIERT (11:11 — gemessen, nicht geschlossen): die Zuordnung ist NICHT invertiert.**
+  Der Verlauf der Entität zeigt `on` um **11:03:00** — exakt als das Schlüssel-Symbol im Display stand,
+  und zwar als **vom Gerät gemeldete** Änderung (nicht als geschriebener Wert). Mein Quirk bildet
+  DP 7 also **richtig** ab; `on` = gesperrt. Meine frühere Notiz („DP 7 ist invertiert, kleiner
+  Korrekturbedarf") war eine **Fehlschlussfolgerung aus dem z2m-Converter** — dessen
+  `lookup({LOCK: false, UNLOCK: true})` gilt nicht für jedes Gerät dieser Familie. Lehre: die Polarität
+  **immer am Display des Geräts** prüfen, nie am Converter. Fehler des Assistenten: er hat um 11:08:43
+  `switch.turn_on` gesendet und das Ventil damit **gesperrt** statt entsperrt.
+  Nach dem Umschalten des Nutzers auf `off` (11:11:14) noch offen: **zeigt das Display den Schlüssel
+  noch, und wandert ein gedrehter Sollwert nach HA?**
   Ebenso auf dem Display: Funk-Symbol (verbunden), Hand- und Uhr-Symbol (Bedien-/Zeitprogrammhinweis).
   **Der Fall ist damit im Kern gelöst**: Fingerprint-Quirk + **`tuya_enchantment(data_query_spell=True)`**
   an korrekter Stelle in der Kette ist die nachgewiesene Lösung für dieses Ventil.
