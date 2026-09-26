@@ -817,6 +817,20 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
     **Vorher geprüft:** kein Dashboard nannte das Ventil, nur die eigene Automatik hing daran (angepasst).
     **Merke:** Ein Geräte-Rename ändert alle Anzeigen auf einmal, die Entity-IDs müssen einzeln
     mitgezogen werden (`config/entity_registry/update`, `new_entity_id`).
+* **MELDERHYTHMUS GEMESSEN (26.09., 12:14–12:54).** Der lange Mithörer zeigt, wie oft das Ventil
+  von selbst Werte schickt:
+  ```
+  12:26:49  ist=24,0        ← letzte Temperaturmeldung nach dem Re-Pair
+  12:49:19  soll=8,0        ← Befehl der neuen Automatik (Punkt 12:49:13)
+  12:51:19  ist=23,0        ← ★ nächste Temperaturmeldung, ~24 Minuten später
+  ```
+  **Ergebnis:** Die Ist-Temperatur kommt **selbstständig, aber selten — im Bereich einer halben
+  Stunde.** Der Sollwert erscheint dagegen sofort (er ist der eigene Schreibbefehl).
+  **Folge für die Automatik:** nicht auf die Rückmeldung warten. Der Controller schreibt und kennt
+  seinen Sollwert; für die Ist-Temperatur muss er mit bis zu ~30 Minuten alten Werten rechnen.
+  Ebenfalls sichtbar: die `running_state`-Korrektur wirkt (bis 12:24 `heating`, danach `idle`, was
+  bei Soll 8 < Ist 24 richtig ist), und beim Re-Pair um 12:24:39 sprang die Kindersicherung für
+  30 Sekunden auf `on`.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
