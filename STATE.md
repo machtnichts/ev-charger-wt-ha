@@ -396,16 +396,21 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   **Zusatzbefund:** für den Tuya-TS0601 (`a4:c1:38:8e:bf:be:09:0e`) existiert **keine
   `climate`-Entität** — nur `rssi` und `lqi` (beide `disabled_by: integration`) plus die
   Firmware-Update-Entität. Er ist also derzeit **nicht steuerbar**, auch wenn er zurückkäme.
-  **Ursache offen:** leere Batterie, ausgebaut, oder kein Weg ins Netz. Die Kellerlampen sind
-  „Wandschalter aus" (Nutzer) — damit ist als Erklärung auch denkbar, dass die Route fehlt;
-  **Test:** Lichtschalter dort länger an, dann müsste er sich binnen Stunden melden.
+  **Ursache offen:** leere Batterie, ausgebaut, oder deaktiviert. Der Nutzer stellt klar: die
+  Kellerlampen sind **keine Router** (und hängen am Wandschalter, sind also meist aus) — die
+  Routen-Erklärung trägt damit nicht, der von mir vorgeschlagene Lichtschalter-Test ist hinfällig.
+  **Entscheidend ist die Zeitfolge:** der TRV verstummte am **20.02.**, also **vor** allen anderen
+  Ausfällen dieser Ecke (`ElektroHeizungKeller` 02.05., Eingangstür 27.05., Leuchte Ecke
+  Wohnzimmer 11.07.). Die Ursache liegt damit beim **Gerät selbst**.
   Das ZHA-Netz ist gesund (413 Entitäten, 247 mit Wert, jüngste Meldung sekundenalt) — die Stille
   ist geräteseitig, nicht netzweit.
   **Stille Geräte, Stand 26.09. (7+ Tage):** Leuchte Ecke Wohnzimmer 11.07. (77 d), Eingangstür
   27.05. (121 d, Zelle bestellt), ElektroHeizungKeller 02.05. (147 d), Ralfs TRV 20.02. (217 d),
   HOBEIAN ZG-101ZL 14.06. (103 d) und 23.09.2025 (368 d), TS0203 21.09.2025 (369 d) — die letzten
-  drei sind die zuvor deaktivierten Karteileichen. `Steckdose PC Lea` fiel am 23.09. aus (3 Tage,
-  unter der 7-Tage-Schwelle); die Notiz vom 25.09. stimmt damit.
+  drei sind die zuvor deaktivierten Karteileichen. `Steckdose PC Lea` ist seit dem 23.09. ohne
+  Kontakt — **absichtlich: sie ist nicht angeschlossen** (Nutzer), also kein Defekt. Die frühere
+  Bezeichnung dieser beiden als „Router offline" (25.09.) ist damit mindestens für Lea's Dose
+  **falsch**; ob `ElektroHeizungKeller` ein Router ist, ist offen.
   **Nebenbei:** die vier Daikin-Splits heißen `climate.dach_ap22393`, `kevin_ap02845`,
   `lea_ap27941`, `wzr_ap86576` (alle `off`) — nur der SONOFF TRVZB auf dem Heizungs-Board ist `heat`.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
