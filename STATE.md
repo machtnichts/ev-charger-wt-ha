@@ -464,6 +464,22 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   **Die Methode ist als Skill-Referenz gesichert:**
   `home-assistant-integration/references/unsupported-zigbee-device.md`.
   **Nächster Schritt:** Ventil anlernen, danach Ist-Temperatur und Sollwert gegenprüfen.
+* **Der Quirk greift — Tuya-Ventil ist nach 217 Tagen wieder im Netz (26.09., 08:19).** Harte Belege:
+  ZHA meldet **`quirk_applied: True`** und `quirk_class: 'zhaquirks.tuya.builder:(_TZE284_noixx2uz /
+  TS0601)'`; das Gerät ist `available: True`, **`last_seen` 08:20:14** (Sekunden alt), **LQI 156**,
+  RSSI −61, `nwk` 61126 — es funkt also. **Dieselbe Geräte-Kennung wie vorher**
+  (`5bc08943e7c3a0290c370097e41e7edf`) — **kein Doppeleintrag**, der alte Name
+  „Thermostat-Ralf-Keller-Party-Z" und der Bereich `keller_party` blieben erhalten.
+  **Der Quirk hat genau die zugesagten Entitäten erzeugt:**
+  `climate.thermostat_ralf_keller_party` (Modi off/heat, 5–30 °C),
+  `switch.…_frostschutz` (**DP 36**), `switch.…_kindersicherung` (**DP 7**), dazu
+  `sensor.…_hlk_aktion`, `…_pi_warmebedarf`, `…_quelle_der_sollwertanderung`, `…_zeitstempel`
+  (die Zusatz-Entitäten der Familie `TuyaThermostatV2` — auch das ein Beweis, dass die richtige
+  Klasse geladen wurde). **Noch offen:** die Werte stehen auf `unavailable`
+  (`soll=None`, `ist=None`), weil ein Batteriegerät erst aufwachen muss — Wecken per Tastendruck
+  oder ein Sollwert-Schreibvorgang (ZHA reiht Befehle für Schlafgeräte ein).
+  **Letzter Prüfschritt:** Ist-Temperatur gegen ein bekanntes Thermometer, Sollwert schreiben und
+  **am Gerät** kontrollieren. Erst damit ist die Datenpunkt-Zuordnung verifiziert.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
