@@ -433,6 +433,22 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   z2m-Converter-Threads verifiziert werden. **Voraussetzung in jedem Fall:** das Gerät ist seit
   217 Tagen nicht im Netz und muss **neu angelernt** werden. Reihenfolge: erst neu anlernen (billig,
   vielleicht erkennt ZHA inzwischen mehr), dann ggf. Quirk, sonst Karteileiche.
+* **Lokaler Quirk für das Tuya-Ventil geschrieben (26.09.) — `local-tools/ts0601_trv_noixx2uz.py`**
+  (gitignored, **nicht** im öffentlichen Repo; 84 Zeilen, Syntax geprüft). Aufbau:
+  `TuyaQuirkBuilder("_TZE284_noixx2uz", "TS0601")` mit den Datenpunkten **2** (system_mode),
+  **3** (running_state), **4** (Sollwert, ×10), **5** (Ist-Temperatur, ×10), **7** (Kindersicherung),
+  **36** (Frostschutz). Diese sechs sind **doppelt belegt**: der z2m-Community-Converter für *genau
+  diesen* Fingerprint (Thread #29450) und der 16-Fingerprint-Familienblock in
+  `zhaquirks/tuya/tuya_trv.py` stimmen bei 2/3/4/5/7 exakt überein (geprüft, nicht vermutet).
+  **Bewusst weggelassen:** Kalibrierung (Familie DP 47, Converter DP 114) und Fehler-/Batteriewarnung
+  (Familie DP 35) — für dieses Gerät nicht belegt, sonst Gefahr falscher Werte.
+  **Einbau (offen, seine Hand):** Datei nach `/config/zha_quirks/`, in `configuration.yaml`
+  `zha:` → `custom_quirks_path: /config/zha_quirks/`, **HA-Neustart**, **danach** das Ventil neu
+  anlernen — der Quirk muss beim Koppeln schon aktiv sein. **Danach prüfen:** Ist-Temperatur gegen ein
+  bekanntes Thermometer, Sollwert schreiben und am Gerät kontrollieren. Der Nutzer hat mehrere
+  Heizkörper und nutzt Ventile für „Fenster auf → Heizkörper zu", deshalb lohnt der Weg. **Wenn es
+  funktioniert, wäre ein PR an `zigpy/zha-device-handlers` der nächste Schritt** (eine Zeile in der
+  Familie, plus Löschen der lokalen Kopie).
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
