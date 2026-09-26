@@ -592,6 +592,26 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   weiter gitignored). Ausdrücklich als **Vorsichtsmaßnahme** dokumentiert, nicht als bewiesene
   Ursache. `skip_configuration` betrifft laut Quelle nur die **Reporting-Konfiguration**, nicht die
   Zaubersprüche.
+* **BESTÄTIGT im Protokoll vom 26.09. (10:55) — der Aufruf-Punkt war der Fehler.** Die Datei des
+  Nutzers zeigt für das Ventil (jetzt Kurzadresse **0xAC57**, IEEE unverändert → neu beigetreten):
+  ```
+  10:54:32  [zha.zigbee.device] [0xAC57](TS0601): started configuration
+  10:54:32  [zha.zigbee.device] [0xAC57](TS0601): applying quirks custom device configuration
+  10:54:32  [zigpy.device] [0xac57] Executing attribute read spell on Tuya device a4:c1:38:8e:bf:be:09:0e
+  10:54:32  [0xAC57:1:0x0000] Sending request: Read_Attributes(attribute_ids=[4, 0, 1, 5, 7, 65534])
+  ```
+  (zweimal, 10:54:32 und 10:54:46). **Der Attribut-Lese-Spruch feuerte also — mit genau den sechs
+  Attributen, die der Test verlangt — aber `Executing data query spell` fehlt vollständig.** Damit ist
+  belegt: die Geräteklasse **war** enchanted, hatte aber die **Standardwerte** (`read_attr_spell=True`,
+  `data_query_spell=False`). **Mein `.tuya_enchantment(data_query_spell=True)` an erster Stelle der
+  Kette hat also nicht gegriffen** — der Verdacht zur Position war richtig, nicht bloß Vorsicht.
+  **Zweiter, wichtiger Befund: die Gerätekonfiguration läuft NICHT nur beim Anlernen.** Sie lief um
+  **10:54** (nach dem Neustart um 10:47), sobald das Ventil erreichbar war, und ZHA wendet dabei
+  `applying quirks custom device configuration` an. **Folge: mit der korrigierten Datei genügt ein
+  Neustart — die Konfiguration (und damit der Datenabruf) kommt nach, wenn das Ventil wach ist. Ein
+  Neuanlernen ist nicht mehr zwingend.**
+  **Beweis für den nächsten Durchlauf:** die Zeile `Executing data query spell on Tuya device
+  a4:c1:38:8e:bf:be:09:0e` muss dann im Protokoll stehen.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
