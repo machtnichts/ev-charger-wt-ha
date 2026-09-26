@@ -795,6 +795,28 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
     `off`, während das Gerät sperrte. Nur das Display ist maßgeblich.
   **Endstand:** Betriebsart `heat`, Sollwert schreib- und lesbar (halbe Grad), Ist-Temperatur,
   Ventilzustand korrekt, Batterie %, Kindersicherung an und trotzdem ferngesteuert. Fall geschlossen.
+* **FENSTER-AUTOMATIK SCHLAFZIMMER GEBAUT UND BEIDE RICHTUNGEN BELEGT (26.09., 12:47–12:52).**
+  Neues Ventil ist für das **Schlafzimmer Eltern** bestimmt und wurde dorthin umgezogen.
+  * **Fensterkontakt:** `binary_sensor.aqarasensorsztur_offnung` („Schlafzimmer Fenster groß").
+    Der Nutzer hat ihn ausdrücklich bestätigt.
+  * **Neue Automatik:** `automation.schlafzimmer_trv_fenster_auf_zu` (id `1790419671862`),
+    Auslöser Fenster `on`/`off` **jeweils 15 s**, Aktionen `climate.set_temperature` 8 bzw. 20.
+  * **Gemessene Läufe:** 12:48:58 auf → 12:49:13 gefeuert → SOLL 8,0; 12:51:27 zu → 12:51:42
+    gefeuert → SOLL 20,0. **Jeweils exakt 15 s nach dem Zustandswechsel.**
+  * **Einschwingzeit wirkt:** schnelles Auf-Zu-Auf-Zu (12:48:49–12:48:52) löste **nichts** aus,
+    ebenso ein 2-Sekunden-Öffnen um 12:46. Gewollt: schützt Motor und Batterie.
+  * **NICHT ANGETASTET:** `automation.trv_kellerparty_fenster_auf_heizung_zu` (id `1772474316617`,
+    Auslöser `binary_sensor.fenstersensorkellerparty_offnung`, steuert `climate.sonoff_trvzb_thermostat`)
+    — anderes Zimmer, anderes Fenster, anderes Ventil. Nachkontrolle: unverändert, steuert weiter SONOFF.
+  * **Umbenennung (WebSocket-API, die REST-API liefert für die Registries 404):**
+    Gerät `5bc08943e7c3a0290c370097e41e7edf` → `name_by_user` „Schlafzimmer Eltern", Bereich
+    `schlafzimmer`. Entity-IDs umgezogen: `climate.schlafzimmer_eltern_thermostat`,
+    `switch.schlafzimmer_eltern_kindersicherung`, `…_frostschutz`, `sensor.…_batterie`,
+    `…_hlk_aktion`, `update.…_firmware`, `sensor.…_rssi`, `…_lqi`.
+    **Die Anzeigenamen folgen automatisch dem Gerätenamen** (die Entitäten hatten `name = None`).
+    **Vorher geprüft:** kein Dashboard nannte das Ventil, nur die eigene Automatik hing daran (angepasst).
+    **Merke:** Ein Geräte-Rename ändert alle Anzeigen auf einmal, die Entity-IDs müssen einzeln
+    mitgezogen werden (`config/entity_registry/update`, `new_entity_id`).
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
