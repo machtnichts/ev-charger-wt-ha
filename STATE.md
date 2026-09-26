@@ -375,6 +375,16 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   `esp_wroom_32_keller` liefert 3/3 Werte), alle 18 Referenzen der Ansicht gültig, 6 Karten vorher
   wie nachher. Ungeprüft: das Rendern (kein HA-Login). Die Karte „Heizung Übersicht" zeigt bewusst
   weiter „nicht verfügbar" — sie sagt, warum die Differenz fehlt.
+* **ESP-Test am 26.09. bestanden — und die Dach-CO₂-Baustelle ist damit zu.** Der Nutzer schaltete
+  Flow-Monitor **und** Dach-CO₂-ESP ein. Beleg (aus dem eigenen Mithörer, Sekunden genau):
+  `wifi_status` des Flow-Monitors `OFFLINE → ONLINE` um **07:50:25**, erste Werte **07:49:28** —
+  Vorlauf 23,06 °C, Rücklauf 22,19 °C, **Differenz 0,9 °C**. Die Vorhersage „nahe 0" traf genau zu:
+  das Wasser steht, weil nichts fließt. Unabhängige Bestätigung, dass nicht geheizt wird: der
+  Kompressor der Wärmepumpe `dach_ap22393` meldet **0 W**. Damit ist die Bedingung der verpackten
+  Kachel erfüllt — **das Rendern hat der Nutzer zu prüfen**, das ist der einzige offene Rest.
+  Der **Dach-CO₂-Sensor**, seit 19.09. `unavailable`, war **kein Defekt**, sondern das
+  ausgeschaltete Gerät: jetzt 751 ppm / 44 % / 21,7 °C. Alle vier ESPHome-Geräte (Flow, WZ-CO₂,
+  Dach-CO₂, Keller-CO₂) sind damit gesund. **Damit ist der Punkt „Dach-CO₂ unavailable" erledigt.**
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
