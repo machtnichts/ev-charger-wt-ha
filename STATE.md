@@ -741,6 +741,23 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Beobachtung läuft; falls es schweigt, klärt das Protokoll die Frage (`0xef00`-Zeilen).
   **Wichtig für die Automatik:** die *Schreibrichtung* ist jetzt frei, aber die *Leserichtung* muss
   zuverlässig sein, sonst regelt der Controller auf veraltete Werte.
+* **BATTERIE-DATENPUNKT + NEUANLERNEN (26.09., ~12:15–12:25).** Im Protokoll tauchte als **einziger
+  echter Messwert** des Ventils **Datenpunkt 6 = 43** auf (Batteriestand). Der Quirk wurde um
+  `.tuya_battery(dp_id=6)` ergänzt; die Datei bildet jetzt **sieben** Datenpunkte ab:
+  **2, 3, 4, 5, 6, 7, 36** (Syntax geprüft, Kette `adds` → `tuya_enchantment` → `skip_configuration`
+  → `add_to_registry` korrekt).
+  **Geplanter Ablauf des Nutzers (bewusst in dieser Reihenfolge):** Datei ersetzen → **HA-Neustart**
+  (damit der Quirk geladen ist) → Ventil in ZHA **entfernen** → **neu anlernen**.
+  **Zweck:** nicht der Quirk (der ist längst drin), sondern die **Gerätekonfiguration** — und mit ihr
+  der **Datenabruf-Zauberspruch**, der seit dem Neustart um 11:53 nicht mehr geworfen wurde.
+  **Erwartung nach dem Anlernen:** Sollwert (12/13), Ist ≈ 23 °C, Betriebsart `heat`, Aktion `idle`,
+  Batterie 43 %.
+  **Offen bleibt** die 0,5-Schritt-Theorie des Nutzers (das Gerät arbeitet in halben Grad; 11,4 könnte
+  unzulässig sein). **Weder bestätigt noch widerlegt** — solange das Ventil schweigt, kann ein
+  „stehender" Wert nichts beweisen (Regel 11). Der Test gelingt erst, wenn das Gerät wieder meldet.
+  **Nebenbefund:** Der 13,0-Schreibbefehl hielt 150 s ohne Rückfall — bei **schweigendem** Gerät ist
+  das **kein** Erfolgsnachweis.
+  **Merke:** HA-Protokolldateien sind **UTC** benannt (`10-09-17` = 12:09 Berlin).
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
