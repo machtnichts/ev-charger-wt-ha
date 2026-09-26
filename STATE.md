@@ -498,6 +498,25 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   `homeassistant.turn_off`-Aufruf **ohne Ziel** — in HA schaltet das *alle* schaltbaren Geräte ab.
   Vor dem Ausführen bemerkt und entfernt. Regel jetzt in der Skill-Referenz
   `home-assistant-integration/references/service-call-safety.md`.
+* **Ventil: was der *funktionierende* Community-Converter sagt (26.09.).** Thread #29450 enthält vier
+  Fassungen; die **letzte** (Kommentar 04.02.) ist die, mit der der Autor „already great results"
+  meldet — er hat **acht** dieser Ventile. Ihre Datenpunkte: **2 preset** (auto/manual/leave),
+  **3 running_state**, **4 Sollwert ÷10**, **5 Ist-Temperatur** (vorzeichenbehaftet, ÷10),
+  **6 Batterie**, **7 Kindersicherung** (`LOCK:false, UNLOCK:true` — **invertiert**),
+  **28–34 Wochenprogramm**. **Entscheidend:** DP 4 und 5 decken sich mit meiner Quirk-Zuordnung —
+  die **Kernzuordnung ist richtig**. Unterschiede: DP 2 ist dort *preset* statt system_mode (die
+  Werte 0/1/2 passen zusammen), DP 6 (Batterie) und das Wochenprogramm fehlen mir.
+  **Der Autor beschreibt genau unser Symptom:** die Geräte gehen „alle zwei Wochen" in eine
+  **Kalibrierungsschleife**, und **nur ein Batterie-Entfernen** bringt sie zurück. Das passt zu dem
+  blinkenden **„CL"** auf seinem Display — Kindersicherung *oder* Kalibrierung, beides denkbar.
+  **Stand:** das Ventil funkt (`last_seen` sekundenalt, LQI 160), liefert aber **keine** Werte;
+  das Systemlog zeigt **keine** Warnung über unbekannte Datenpunkte. Ohne Wirkung probiert:
+  `homeassistant.update_entity`, Deaktivieren/Reaktivieren der Entitäten, Lesebefehl auf den
+  Standard-Thermostat-Cluster 0x0201 (Timeout, dann HTTP 500). Mithörer läuft bis ~08:30.
+  **Nächste Schritte:** (a) abwarten, ob sich der Sperr-/Kalibrierzustand löst; (b) sonst das
+  Debug-Protokoll auswerten (Debug per `logger.set_level` wieder einschalten, dann nach `Tuya`
+  suchen — an `/config` komme ich nicht heran, das muss der Nutzer); (c) Quirk um DP 6 und das
+  Wochenprogramm erweitern. **Das Debug ist wieder aus** (auf `warning` zurückgesetzt).
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
