@@ -639,6 +639,29 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Ebenso auf dem Display: Funk-Symbol (verbunden), Hand- und Uhr-Symbol (Bedien-/Zeitprogrammhinweis).
   **Der Fall ist damit im Kern gelöst**: Fingerprint-Quirk + **`tuya_enchantment(data_query_spell=True)`**
   an korrekter Stelle in der Kette ist die nachgewiesene Lösung für dieses Ventil.
+* **VOLLSTÄNDIG GELÖST (26.09., 11:28–11:30) — die Betriebsart war der letzte Fehler.** Nach dem
+  Modus-Fix (Datenpunkt 2 nicht mehr auf `SystemMode.Auto`, sondern **fest auf `Heat`**) lief alles:
+  ```
+  11:24:04  Neustart (Verbindung weg)
+  11:24:37  climate=heat_cool  soll=None   ← alte Datei noch aktiv
+  11:28:22  climate=heat       soll=19.5   ← ★ Fix greift: Modus heat, Sollwert SICHTBAR
+  11:28:37  climate=heat       soll=14.5   ← Sollwert wandert (Gerätedreh)
+  11:29:34  Schreibtest aus HA: set_temperature 18.0 -> ok
+  11:29:49  climate=heat       soll=18.0   ← ★ Schreibbefehl ANGEKOMMEN und geblieben
+  ```
+  **Diagnose-Korrektur zum eigenen Vorgehen:** das wiederholte „soll = None" war ein **Messfehler**.
+  Gelesen wurde nur `attributes.temperature`; bei der Betriebsart `heat_cool` (Automatik) ist dieses
+  Feld bei einer Bereichs-Entität **immer leer**, der Wert liegt in `target_temp_low`. Der Sollwert
+  war also **nie verloren** — nur unsichtbar. **Regel: bei einer `climate`-Entität immer auch
+  `target_temp_low`/`target_temp_high` lesen, nicht nur `temperature`.**
+  Belege aus der ZHA-Diagnosedatei des Nutzers (`...TZE284_noixx2uz_TS0601_5bc08943e.json`):
+  * `occupied_heating_setpoint = 1700` im Thermostat-Cluster = **17,0 °C**, also der echte Sollwert.
+  * `ctrl_sequence_of_oper = 2` = **nur Heizen** — die „Auto"-Zuordnung widersprach dem Gerät.
+  * `child_lock` = Cluster-Attribut **`0xef07`** → **Datenpunkt 7** (bestätigt, `inverted: false`).
+  * `frost_protection` = Cluster-Attribut **`0xef24`** → **Datenpunkt 36** (bestätigt).
+  **Merkregel für künftige Rate-Datenpunkte: Attribut = `0xEF00` + Datenpunkt-Nummer.**
+  Dauerhaft leere Entitäten (Gerät sendet diese DPs nicht): `pi_heating_demand`,
+  `setpoint_change_source`, `setpoint_change_source_timestamp` — nur kosmetisch.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
