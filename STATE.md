@@ -554,6 +554,28 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   **Offen:** Suche nach `eec6` und `0xef00` um 10:19/10:35 im Protokoll (zeigt, ob der Befehl
   überhaupt rausgeht und ob eine Antwort kommt). Debug steht noch auf `debug` für `zigpy.zcl` und
   `zhaquirks.tuya` — **danach zurücksetzen**.
+* **DURCHBRUCH: die Ursache ist gefunden (26.09., ~10:45) — das Ventil braucht den „data query"-Spruch.**
+  Das vom Nutzer geschickte Protokoll zeigt für `0xEEC6` (nwk 61126 = das Ventil) **über den ganzen
+  Zeitraum nur eine einzige Sorte Verkehr**: alle ~15 Minuten ein `set_time_request` (Tuya-Zeitsync),
+  den zigpy mit `DefaultResponse(SUCCESS)` beantwortet — **sonst nichts**, **kein einziger
+  Datenpunkt-Bericht**. Zusätzlich: **kein einziger Schreibversuch** zu meinen beiden
+  `set_temperature`-Aufrufen (10:19:30 / ~10:35) → **meine Befehle sind nicht einmal rausgegangen**;
+  die **15** im Display ist also **nicht** von mir.
+  **Der Mechanismus** (in `zhaquirks/tuya/__init__.py`): Klasse `BaseEnchantedDevice` —
+  ``tuya_spell_data_query: bool = False  # additional spell needed for some devices to send data``.
+  Der Spruch (`spell_data_query()` → `tuya_cluster.command(TUYA_QUERY_DATA)`, **0x03**) wird **einmal
+  bei der Gerätekonfiguration** geworfen. Im modernen Builder schaltet ihn
+  `.tuya_enchantment(data_query_spell=True)` ein (erzeugt `EnchantedDeviceV2(CustomZigpyDevice,
+  BaseEnchantedDevice)`); **Standard ist `False`** — und **weder die 16er-Familie noch mein Quirk
+  haben ihn je eingeschaltet**.
+  **Fix eingebaut:** `local-tools/ts0601_trv_noixx2uz.py` enthält jetzt `.tuya_enchantment(
+  data_query_spell=True)` (89 Zeilen, Syntax geprüft, weiter gitignored).
+  **Nächste Schritte beim Nutzer:** Datei ersetzen → **HA neu starten** → wenn dann noch nichts kommt,
+  das Ventil **neu anlernen** (der Spruch läuft bei der Konfiguration). **Beweis im Protokoll:**
+  die Debug-Zeile `Executing data query spell on Tuya device a4:c1:38:8e:bf:be:09:0e` — sie enthält
+  die **IEEE** und ist damit direkt suchbar. Ein manueller Versuch, `0x03` per
+  `zha.issue_zigbee_cluster_command` zu schicken, lief in einen HTTP 504 (Dienst wartet auf Antwort,
+  Gerät schläft) — der Befehl steckt womöglich in der Warteschlange.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
