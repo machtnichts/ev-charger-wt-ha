@@ -699,6 +699,25 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   einen anderen Weg.
   Nebenbefund aus demselben Test: der Ventilmotor braucht ~100 s, bis `running_state` von „heizt" auf
   „Leerlauf" umspringt — die Verzögerung ist Mechanik, kein Fehler.
+* **ZEITFENSTER BESTÄTIGT (26.09., 11:52–12:00) — Schreibbefehle greifen nur kurz nach dem Entsperren.**
+  Zwei Schreibbefehle im Abstand von vier Minuten, dazwischen kein Eingriff am Gerät:
+  ```
+  11:52  set_temperature 11.4   ->  120 s beobachtet, Wert blieb stehen (Ventil meldete nichts)
+  11:56:35  set_temperature 18.0 ->  +0…+20 s SOLL=18,0, dann +30 s SOLL=11,4 und dabei blieb es
+                                     (170 s beobachtet, keine weitere Änderung)
+  ```
+  **Der Rücksprung auf 11,4 ist der Schlüssel:** das Gerät ist auf den Wert zurückgefallen, den es
+  zuletzt **angenommen** hatte. Damit ist belegt: **11,4 kam an** (kein HA-Echo — der Wert kam *nach*
+  dem 18,0 zurück), **18,0 wurde abgelehnt**. Das Fenster war zwischen 11:52 und 11:56 bereits
+  geschlossen. **Signatur für künftige Tests:** ein Rücksprung benennt den zuletzt erfolgreich
+  geschriebenen Wert — nicht einen Zufallswert.
+  **Und:** die Anzeige `switch.…_kindersicherung` stand während des ganzen Tests auf `off`, obwohl das
+  Ventil sperrt. **Der Schalter sagt nichts über die echte Sperre.**
+  **Offene Kernfrage:** kann Home Assistant das Ventil überhaupt entsperren (Schalter) oder nur der
+  lange Druck am Gerät? Nicht beantwortet. Eigenes Ergebnis: mein `switch.turn_on` um 11:08:43 hat
+  das Ventil **gesperrt** (nicht entsperrt), der Nutzer musste trotzdem physisch lange drücken.
+  **Nächster Schritt (Nutzer):** Handbuch — gibt es einen **Dauermodus** für die Kindersicherung?
+  Ohne Dauermodus ist „Fenster auf → Heizung zu" über diesen Weg nicht automatisierbar.
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
