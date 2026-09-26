@@ -517,6 +517,18 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Debug-Protokoll auswerten (Debug per `logger.set_level` wieder einschalten, dann nach `Tuya`
   suchen — an `/config` komme ich nicht heran, das muss der Nutzer); (c) Quirk um DP 6 und das
   Wochenprogramm erweitern. **Das Debug ist wieder aus** (auf `warning` zurückgesetzt).
+* **Ventil: eine ganze Stunde Beobachtung, kein einziger Wert (26.09., 06:30–07:30).** Der Mithörer
+  (Takt 20 s) protokollierte **keine einzige Zustandsänderung**; `soll`/`ist` blieben durchgehend
+  `None`. Das Gerät war dabei durchgehend gesund und wurde sogar besser: `last_seen` jeweils
+  sekundenalt, **LQI 160 → 176**, **RSSI −60 → −56** (ausgezeichneter Link). Damit sind **Gerät und
+  Funk ausgeschlossen** — es kommen schlicht keine Daten. Deckt sich mit dem Community-Befund
+  („Kalibrierungsschleife", nur Batterie-Entfernen hilft).
+  **Das Debug-Mitlesen ist wieder eingeschaltet** (`zigpy.zcl`, `zhaquirks.tuya`,
+  `homeassistant.components.zha` auf `debug`) und bleibt an, bis der Nutzer im Protokoll nach
+  `Tuya` gesucht hat — **danach unbedingt wieder auf `warning` zurücksetzen**.
+  **Offene Schritte:** (1) Nutzer sucht unter Einstellungen → System → Protokolle nach `Tuya` und
+  schickt ein Bild: Zeilen vorhanden → Zuordnung anpassen; keine Zeilen → sauber neu anlernen.
+  (2) Offene Frage: steht „CL" noch im Display (Kindersicherung; aufheben mit **+ und −** zusammen).
   * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
     Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
     36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
