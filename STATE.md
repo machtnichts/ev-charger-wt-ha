@@ -888,6 +888,35 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Tageszahl ohne diese Aufteilung ist **kein** Fehlerbeweis — die SE-App zeigt die Aufteilung unter
   „Energiebilanz".
   (Vorherige Deutung „die App zeigt zu wenig / Register falsch" ist damit **zurückgenommen**.)
+* **GARAGE-PV ALS ZWEITE ZAHL ANGEBAUT (27.09., 15:45).** Wunsch des Eigentümers, wörtlich:
+  *„deye nicht addieren, hier ging es ja vor allem um akku, der nur von SE geladen werden kann.
+  Aber so ähnlich wie bei leitung auch deyes produktion als zweiter zahl anzeigen"*.
+  ```
+  Zeile:  inverter output today / garage PV      13,59 / 2,70
+  ```
+  **Bewusst NICHT addiert** — die Hausbatterie lädt nur der SolarEdge, eine Summe würde also eine
+  andere Frage beantworten. Muster genau wie bei der Leistung (`spv.textContent = SE + " / " + garage`).
+  **Umsetzung** (in `ha-app/evcharge/main.py`, Datei ist **gitignored** — Lade-Apps bleiben außerhalb
+  des Repos):
+  * `_garage_day` hält `{day, start_kwh, today_kwh, partial}`; die Verankerung entsteht beim ersten
+    Lesevorgang eines Tages aus `sdm_state["pv_energy_kwh"]` (= HA `sensor.garage_pv_energie`).
+  * `_garage_day_update()` kopiert den Aufbau der SE-Verankerung (`_fc_se_latch`), inklusive
+    Teil-Tag-Marker und Rückwärts-Sperre (ein Reset/Zählerumschlag darf keine Zahl erfinden).
+  * Der Wert steht als `garage_day` im Zustand und wird nur angezeigt; **kein** Einfluss auf die Regelung.
+  * Der Tooltip der Zeile sagt jetzt die Wahrheit: *„ACHTUNG: das ist NICHT die PV-Erzeugung, sondern
+    was der Wechselrichter ABGEGEBEN hat"* — die alte Behauptung („genau die Zahl, die deine
+    Monitoring-App als Produktion zeigt") war seit dem Einbau der Batterie falsch.
+  ```
+  2026-09-27 13:45:20  garage PV day baseline latched at 2813.300 kWh (HA counter) (partial day)
+  garage_day: {"day_kwh": 0.0, "counter_kwh": 2813.3, "partial": true, "day": "2026-09-27"}
+  ```
+  **Geprüft:** 511 Einzelprüfungen über alle 13 Suiten grün, `node --check` für das eingebettete
+  JavaScript ok, Dienst sauber neu gestartet.
+  **Merke:** Die Tagesgrenze der App ist **Mitternacht in der Hauszeitzone** — im Protokoll steht sie
+  als **22:00 UTC**, weil der Server UTC läuft und das Protokoll die Hauszeit zeigt. Die
+  Tagesbaselines aus dem Log beweisen es: `29287.762 → 29314.126 → 29343.352` ergeben 26,364 und
+  29,226 kWh — exakt die gespeicherten Tageswerte.
+  **Offen:** Der Lebensdauer-Vergleich (App 29,36 MWh gegen SE-App 66,5 MWh) ist weiter ungeklärt.
 * **MELDERHYTHMUS GEMESSEN (26.09., 12:14–12:54).** Der lange Mithörer zeigt, wie oft das Ventil
   von selbst Werte schickt:
   ```
