@@ -860,6 +860,34 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Update-Datum** — das Datum steht nur in SetApp/Portal bzw. in den Sitzungsverläufen.
   Merke: `session_search` liefert nur bei **einfachen** Suchbegriffen Treffer; lange UND-Ketten
   (fünf Begriffe) kommen leer zurück, ein einzelnes Wort („Firmware") findet die Stelle sofort.
+* **PV-ZÄHLER-RÄTSEL GELÖST (27.09., 15:26): Die Lade-App rechnet RICHTIG — es sind zwei verschiedene Größen.**
+  Der Nutzer verglich „PV produced today (counter)" (13,59 kWh) mit der SE-App (19,9 kWh) und
+  vermutete einen Fehler. Die SE-App zeigt die **Energiebilanz** des Tages:
+  ```
+  Produktion             19,9 kWh
+    Ins Haus              2,08 kWh (11 %)
+    Zur Batterie          6,65 kWh (33 %)
+    Ins Netz             11,2  kWh (56 %)
+  Verbrauch               4,45 kWh
+  ```
+  Der Wechselrichter-Zähler zählt nur, was der Wechselrichter **abgegeben** hat:
+  **2,08 + 11,2 = 13,28 kWh ≈ 13,59 kWh (Lade-App)** — passt auf 0,3 kWh.
+  Die **6,65 kWh, die in die Batterie gingen, sind noch nicht entladen** (Batterie 99 %,
+  Batteriemodus „Time of Use", „Ins Haus 0 kW"). Sie kommen als Ausgangsenergie zurück, sobald die
+  Batterie entlädt — genau das sagt der Tooltip („sie zählt die spätere Akku-Entladung mit").
+  **Zu korrigieren ist nur der Name:** „PV produced today (counter)" ist **nicht** die PV-Erzeugung,
+  sondern der **Ausgang** des Wechselrichters. Der Tooltip vergleicht ihn mit der Monitoring-App —
+  das führt in die Irre, seit eine Batterie im Spiel ist.
+  **Weiterhin offen: der Deye fehlt.** Garage heute 2,7 kWh (SDM-Zähler); die App liest sie
+  (`garage.pv_w` 849 W, `sdm.pv_energy_kwh`, `sdm.last.pv_kwh`) und addiert sie **nicht** auf den
+  PV-Zähler.
+  **Lebensdauer bleibt unterschiedlich:** App 29,36 MWh gegen SE-App 66,5 MWh. Bei 6,59 MWh/Jahr
+  sind das 4,5 gegen 10,1 Jahre — offen, ob in der SE-Summe ein früherer Wechselrichter steckt.
+  **Merke:** Bei einer Anlage mit Batterie ist „Produktion" (PV-Erzeugung) ≠ „Ausgang des
+  Wechselrichters". Die Differenz ist die Batterieladung und holt sich später auf. Eine einzelne
+  Tageszahl ohne diese Aufteilung ist **kein** Fehlerbeweis — die SE-App zeigt die Aufteilung unter
+  „Energiebilanz".
+  (Vorherige Deutung „die App zeigt zu wenig / Register falsch" ist damit **zurückgenommen**.)
 * **MELDERHYTHMUS GEMESSEN (26.09., 12:14–12:54).** Der lange Mithörer zeigt, wie oft das Ventil
   von selbst Werte schickt:
   ```
