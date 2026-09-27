@@ -817,6 +817,29 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
     **Vorher geprüft:** kein Dashboard nannte das Ventil, nur die eigene Automatik hing daran (angepasst).
     **Merke:** Ein Geräte-Rename ändert alle Anzeigen auf einmal, die Entity-IDs müssen einzeln
     mitgezogen werden (`config/entity_registry/update`, `new_entity_id`).
+* **SOLAREDGE: NEUER 6-MINUTEN-FEHLER SEIT ~25.09. — NICHT BEI UNS VERURSACHT (27.09.).**
+  Der Nutzer sah Fehler in der **Lade-App**; seine Beobachtung „die Tage davor gab es diesen Rhythmus
+  nicht" ist **belegt**. Auswertung der Logs:
+  ```
+  site read failed pro Tag:  25.09. 11   26.09. 21   27.09. 16
+  (davor nur vereinzelte Ausreißer: 12.09. 4 · 17.09. 12 · 20.–24.09. 1–4)
+  Abstände der letzten 12 Fehler: 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24 Minuten
+  Abstände am Anfang:            0, 0, 4, 6917, 0, 0, 0, 0, 1, 0, 4, 20 Minuten  (völlig unregelmäßig)
+  ```
+  **Aus vereinzelten Aussetzern wurde um den 25.09. ein Takt.** Der Fehler trifft **immer**
+  `read 32@40071` (Inverter-Block, Modell 101) — **nie** den Meter. Die App fragt alle 30 s, also
+  scheitert **jeder zwölfte** Versuch; ~0,33 % aller Abfragen.
+  **Eine 30-Minuten-Pause des Proxys (26.09. 22:06–22:36) änderte NICHTS** — danach exakt derselbe
+  6-Minuten-Takt. **Damit sind Überhitzung/Überlastung ausgeschlossen.**
+  **Software ausgeschlossen:** im Projekt wurde um den 25./26.09. nichts geändert (die Commits dieser
+  Tage sind alle Ventil-Dokumentation); die Proxy-Konfiguration zuletzt **20.09. 06:04**; das
+  Abfrageintervall steht unverändert auf `interval_s: 30` (Konfiguration und Beispiel identisch).
+  **Also geräteseitig.** Offen: Firmware-Stand des Wechselrichters, Hinweise im SE-Portal um den 25.09.
+  **Kein Handlungsdruck:** die App verkraftet es (sie verbindet 30 s später neu und läuft weiter), der
+  Meter ist nicht betroffen, der Proxy schreibt weiterhin nichts (`upstream_writes: 0`).
+  Protokollzeile für den Installateur: seit 25.09. liefert der Wechselrichter den Block `32@40071`
+  alle 6 Minuten abgeschnitten (`failed to fill whole buffer`), ohne Lastspitze, nach 30 min Pause
+  unverändert.
 * **MELDERHYTHMUS GEMESSEN (26.09., 12:14–12:54).** Der lange Mithörer zeigt, wie oft das Ventil
   von selbst Werte schickt:
   ```
