@@ -888,6 +888,36 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Tageszahl ohne diese Aufteilung ist **kein** Fehlerbeweis — die SE-App zeigt die Aufteilung unter
   „Energiebilanz".
   (Vorherige Deutung „die App zeigt zu wenig / Register falsch" ist damit **zurückgenommen**.)
+* **PROGNOSE-FAKTOR: DIE AKKULADUNG FEHLTE (27.09., 16:00) — der wichtigste Fund des Tages.**
+  Hinweis des Eigentümers, wörtlich: *„Wenn wir dabei Einspeichern in den Akku nicht berücksichtigen,
+  dann wird unser Forecast bis 24:00 immer falsch sein"*. **Er hat recht, und zwar messbar.**
+  Der Faktor verglich **PV-Erzeugung** (Prognose) mit dem **Wechselrichter-Ausgang** (AC-Integral).
+  Die Differenz ist die Batterieladung — sie ist erzeugt, aber nicht abgegeben.
+  ```
+                       vorher    nachher
+  gemessen              12,19  →   20,55 kWh    Ausgang + Akkuladung
+  bis jetzt erwartet    19,93      22,44 kWh
+  Faktor                 0,61  →    0,916       statt 40 % Minderertrag
+  restlicher Tag         3,81  →    3,40 kWh    (korrigiert)
+  ```
+  **Ursache im Code:** der Kommentar bei der Integration behauptete, am AC-Knoten brauche die
+  Batterie „kein eigenes Glied" — das gilt für **Haus/Auto**, aber **nicht** für den
+  Prognosevergleich. Nachts kippt der Fehler ins Gegenteil: der Zähler steigt weiter, wenn die
+  Batterie entlädt.
+  **Umsetzung** (`ha-app/evcharge/main.py`, gitignored):
+  * neues Tagesfeld **`pv_kwh` = `ac_kwh` + `charge_kwh` − `discharge_kwh`** (Erhaltungssatz über den
+    Tag: abgegeben + jetzt im Akku − aus dem Akku = was das Dach erzeugt hat);
+  * `factor_ac` vergleicht jetzt gegen `pv_kwh` (Name bleibt, weil Tagessatz und Oberfläche ihn
+    kennen); zusätzlich `factor_ac_delivered` für den alten Wert und `measured_pv_kwh` als Spalte;
+  * `measured_today_kwh` der Prognose nimmt `pv_kwh`; Rücksicherung nach Neustart liest
+    `measured_pv_kwh`, fällt bei alten Zeilen auf `measured_ac_kwh` zurück;
+  * Tooltip der Prognosezeile sagt jetzt „PV-Erzeugung = Wechselrichter-Ausgang + Akkuladung".
+  * Der CSV-Schreiber ordnet neue Spalten **über den Namen** zu (nicht über die Position) — das neue
+    Feld landet also ohne Eingriff in der Datei.
+  **Geprüft:** alle 13 Testsuiten grün, Dienst neu gestartet, Faktor live von 0,61 auf 0,916.
+  **Merke:** Bei einer Anlage mit Batterie ist der **AC-Ausgang** *nicht* die **PV-Erzeugung**. Wer
+  eine PV-Prognose gegen Messwerte stellt, muss das Batterieglied mitrechnen, sonst ist der Faktor
+  tagsüber zu niedrig und nachts zu hoch.
 * **GARAGE-PV ALS ZWEITE ZAHL ANGEBAUT (27.09., 15:45).** Wunsch des Eigentümers, wörtlich:
   *„deye nicht addieren, hier ging es ja vor allem um akku, der nur von SE geladen werden kann.
   Aber so ähnlich wie bei leitung auch deyes produktion als zweiter zahl anzeigen"*.
