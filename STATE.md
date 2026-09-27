@@ -840,6 +840,26 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Protokollzeile für den Installateur: seit 25.09. liefert der Wechselrichter den Block `32@40071`
   alle 6 Minuten abgeschnitten (`failed to fill whole buffer`), ohne Lastspitze, nach 30 min Pause
   unverändert.
+* **SOLAREDGE-FIRMWARE-UPDATE — DATUM GEFUNDEN: 16./17.09.2026 (27.09.).** Der Nutzer ist der
+  Installateur und wusste, dass der Wechselrichter ein Update bekam („aber nicht gestern oder so"),
+  und verwies auf STATE.md bzw. die Sitzungsverläufe. Fund in den Sitzungen:
+  **„The SolarEdge Modbus path is now HEALTHY again (firmware update + Modbus toggle fixed it) after
+  the 2026-09-16/17 wedge"** (`@session:default/20260913_065549_918f4a`) und, einen Tag später,
+  **„inverter map unchanged after the firmware updates, meter block decodes cleanly"**
+  (`@session:default/20260917_075117_cf75a1`).
+  ```
+  16./17.09.  Firmware-Update + Modbus-Toggle  (löste die Störung, HEALTHY again)
+  19.09.      Firmware read-only gelesen: 0004.0025.0015   (Modell SE5000H-RWS00BNO4, SN 740745CE)
+  25.09.      Der 6-Minuten-Fehler-Takt beginnt           <-- 8 Tage SPÄTER
+  27.09.      Firmware unverändert: 0004.0025.0015  (eine Abfrage über den Proxy, ~50 ms)
+  ```
+  **Ergebnis: Das Update ist nicht die Ursache.** Es liegt acht Tage vor dem Beginn des Takts, und
+  die Version ist bis heute identisch — es gab also auch **kein zweites Update** dazwischen.
+  Bewusst offen: ganz ausschließen lässt sich ein spät wirkender Firmware-Effekt nicht, acht Tage
+  wären dafür aber ungewöhnlich. **Der SunSpec-Identifikationsblock (40004) enthält kein
+  Update-Datum** — das Datum steht nur in SetApp/Portal bzw. in den Sitzungsverläufen.
+  Merke: `session_search` liefert nur bei **einfachen** Suchbegriffen Treffer; lange UND-Ketten
+  (fünf Begriffe) kommen leer zurück, ein einzelnes Wort („Firmware") findet die Stelle sofort.
 * **MELDERHYTHMUS GEMESSEN (26.09., 12:14–12:54).** Der lange Mithörer zeigt, wie oft das Ventil
   von selbst Werte schickt:
   ```
