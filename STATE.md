@@ -294,6 +294,34 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   ist; das ist korrekt und **kein** Defekt, Temperatur und Batterie melden frisch). Neu
   aufgefallen und **aufgeklärt am 26.09. — siehe den Eintrag zu Ralfs TRV weiter unten** (still seit
   20.02.2026, 217 Tage, keine `climate`-Entität mehr).
+* **EINGANGSTÜR-SENSOR WIEDER IN BETRIEB (28.09., 17:47) — nach 124 Tagen Funkstille.**
+  Letzte Meldung war der 27.05.2026. Verlauf, in dieser Reihenfolge gemessen:
+  * **Zelle gewechselt + Knopf gedrückt** → Gerät kam um **17:31:23** zurück: `available: True`,
+    LQI 136, Batterie 69,5 %, Temperatur 31 °C. **Es sendete danach aber nichts mehr.**
+  * **Zwei Auf-Zu-Zyklen und ein direkt angelegter Magnet** → **kein einziger Funkspruch**,
+    `last_seen` blieb auf 17:31:23 stehen. Die LED leuchtete — sie beweist nur lokalen Strom.
+    Damit waren **Montageabstand und Zellenpolarität ausgeschlossen** (bei falscher Polung wäre
+    er gar nicht gekommen).
+  * **Gelöscht + neu angelernt (17:44:19 → 17:45:23) → voll funktionsfähig:**
+    ```
+    15:47:25  binary_sensor.door_offnung -> on    (ZHA last_seen 17:47:22, lqi 144)
+    15:47:29  binary_sensor.door_offnung -> off   (ZHA last_seen 17:47:25, lqi 132)
+    ```
+  * **Die Zelle war die ganze Zeit in Ordnung** — der naheliegende Verdacht war falsch.
+  * **Registry unverändert:** Geräte-ID `1b4cd99bc3c312b75088e774d5c5bc22`, Name „Eingangstür",
+    Bereich `eingang`, alle vier Entitäts-IDs identisch (ZHA schlüsselt über die IEEE). Das Board
+    „Fenster/Türen" brauchte **keine** Anpassung — die vorherige Warnung war unbegründet.
+  * **Merke (wichtig):** Ein frisch verbundenes Gerät kann **halbfertig gekoppelt** sein —
+    erreichbar, guter LQI, ein Satz plausibler Werte, danach Stille. Von außen unsichtbar.
+    Nach jedem Anlernen **ein echtes Ereignis auslösen** und eine **neue** `last_seen` *plus* einen
+    Zustandswechsel in der Historie verlangen. „Es hat beim Anlernen gemeldet" ist der Fehlerfall,
+    nicht der Beweis.
+  * **Werkzeuge** (lokal, gitignored): `local-tools/zha_device_health.py` (Gerätebestand, Tote gegen
+    Lebende kalibriert) und `local-tools/door_join_watch.py` (Mithörer, 4-s-Takt, nur Änderungen).
+  * **`zha.permit` kann max. 254 s**; ein `504 Gateway Timeout` heißt **nicht**, dass das Fenster zu
+    ist. `last_seen` kommt als ISO-String, nicht als Zahl.
+  * **Weiterhin tot (Dauerzustand):** HOBEIAN ZG-101ZL (370 d), `_TZ3000_zutizvyk TS0203` (372 d),
+    ElektroHeizungKeller (150 d), Leuchte Ecke Wohnzimmer (80 d).
 * **Zwei Wassersensoren haben jetzt einen fetten Telegram-Alarm** (HA-nativ, gleicher Bot und
   gleiche Gruppe wie die Batterie-Alarme): `wasser_leck_heizung` (`binary_sensor.wassersensor_heizung`,
   HOBEIAN ZG-222Z) und `wasser_leck_waschmaschine` (`binary_sensor.tz3000_upgcbody_snzb_05`), dazu
