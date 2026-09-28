@@ -888,6 +888,27 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Tageszahl ohne diese Aufteilung ist **kein** Fehlerbeweis — die SE-App zeigt die Aufteilung unter
   „Energiebilanz".
   (Vorherige Deutung „die App zeigt zu wenig / Register falsch" ist damit **zurückgenommen**.)
+* **ERSTER VOLLER TAG MIT DEM NEUEN FAKTOR (Abschluss 27.09. 24:00 Berlin, gelesen 28.09. früh).**
+  ```
+  27.09.  Prognose ganzer Tag              25,913 kWh
+          Ausgang, Integral                18,687 kWh
+          Ausgang, Wechselrichter-Zähler   21,152 kWh
+          Erzeugung (pv_kwh, neu)          22,882 kWh  = Ausgang + Akku +7,983 − 3,789
+          Faktor neu (gegen Erzeugung)      0,883
+          Faktor alt (gegen Ausgang)        0,721      <- was der Faktor vorher gesagt hätte
+          Faktor Array (DC)                 0,73
+  ```
+  Der **Zähler ist die bessere Quelle**: 21,152 gegen 18,687 aus dem Integral — letzteres verliert
+  jede Minute, in der der Dienst nicht läuft (hier 2,5 kWh).
+  **Nachts läuft der Zähler weiter**, weil die Batterie das Haus *durch* den Wechselrichter
+  versorgt: um 05:27 standen 2,18 kWh Ausgang bei SOC 35,9 % und ohne Sonne. Ohne die Akku-Glieder
+  wäre `pv_kwh` dort **negativ** geworden (−0,12) → **jetzt auf 0 begrenzt** (Erzeugung kann nicht
+  negativ sein; `factor()` liefert für einen flachen Tag ohnehin None, die Begrenzung kann den
+  Faktor also nicht schönrechnen).
+  **Spaltenumbau bewiesen:** „header rewritten to 39 columns, 5 old row(s) mapped by name" —
+  `measured_pv_kwh` steht als **Spalte 8** in der Datei, ohne die alten Zeilen zu verschieben.
+  **6-Minuten-Fehler unverändert:** 190 Treffer im Proxy-Log, weiter exakt alle 6 Minuten
+  (03:16, 03:22). Die Pause und die App-Änderungen haben daran nichts geändert.
 * **PROGNOSE-FAKTOR: DIE AKKULADUNG FEHLTE (27.09., 16:00) — der wichtigste Fund des Tages.**
   Hinweis des Eigentümers, wörtlich: *„Wenn wir dabei Einspeichern in den Akku nicht berücksichtigen,
   dann wird unser Forecast bis 24:00 immer falsch sein"*. **Er hat recht, und zwar messbar.**
