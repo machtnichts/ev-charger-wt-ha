@@ -288,7 +288,8 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   als tot geführt war und nach dem Neu-Anlernen wieder sendet (`avail=True`, LQI 172,
   Batterie 100 %). Er hing schon im Netz (`zha/devices` blieb bei 64 Geräten) — ZHA hat ihn
   anhand der IEEE an seinen **bestehenden** Eintrag gehängt. Umbenannt auf
-  **„Button Fliegengrill"**, Bereich `wohnzimmer`.
+  **„Button Fliegengrill"**, Bereich `wohnzimmer`. **Physische Kennzeichnung: „05"** — der Besitzer
+  nennt ihn so; bis heute hatte der Taster keine Funktion, jetzt schaltet er den Fliegengrill.
 * **Die Falle, die viel Zeit gekostet hätte:** Das Taster-Gerät stand auf **`disabled_by: user`**,
   und deshalb hatten alle sieben Entitäten `disabled_by: device` — sie antworten mit **HTTP 404**
   und sind im UI unsichtbar. Die Automation lief trotzdem, weil **ZHA `zha_event` auch für
