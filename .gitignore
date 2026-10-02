@@ -23,3 +23,6 @@ NOTES-local.md
 
 # Werkzeuge der früheren Referenz-Installation, nur lokal
 local-tools/
+
+# Scan-Artefakt von scripts/entity_reference_scan.py
+entity_references.json

@@ -267,6 +267,55 @@ NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
   Regel bestätigt. Die Schätzgrößen von Regel A (`house_reserve_kwh`, Marge 1,3) bleiben
   Platzhalter und werden für Regel B voraussichtlich nicht gebraucht.
 
+## Zuletzt behoben (02.10.2026)
+
+**Neue ZHA-Steckdose „Fliegengrill" — misst, schaltet, hängt an Taster und Nacht-Automatik.**
+
+* **Die Dose selbst ist verifiziert.** Tuya `_TZ3000_gjnozsaz` / **TS011F**, IEEE
+  `a4:c1:38:02:08:5c:ff:ff`, `device_id d5a254ad4af3f63eaf15f456ff1db999`. Mit dem Wasserkocher
+  als Last gemessen: **1971,0 W / 8,547 A** und **Spannung 237 → 228 V** im Moment des
+  Einschaltens (der Einschaltstrom zieht die Leitung runter). Sie rechnet richtig. Die damit
+  verbundene Frage ist damit beantwortet: **die Dose meldet kleine Last korrekt**, unterhalb
+  ihrer Meldeschwelle kann ein Fliegengrill (2–8 W) aber bei 0,0 W stehen bleiben — für „läuft
+  er?" ist der **Schalterzustand** die verlässliche Anzeige, nicht die Leistung.
+* **Umbenannt und einsortiert** (`config/device_registry/update`, zurückgelesen):
+  Gerät **„Fliegengrill"**, Bereich **`wohnzimmer`** (dorthin, wo „Steckdose Kühlschrank" liegt).
+  Die 13 Entitäten heißen jetzt „Fliegengrill Leistung / Spannung / Stromstärke / Summe
+  verbraucht / Kindersicherung". Die **technischen entity_ids bleiben generisch**
+  (`switch.tz3000_gjnozsaz_ts011f_11`) — bewusst: eine Umbenennung der IDs ist ein brechender
+  Eingriff, der Name am Gerät ist das, was das UI zeigt.
+* **Der Taster: IEEE `a4:c1:38:4b:8a:95:40:dc`** — ein HOBEIAN `ZG-101ZL`, der seit **370 Tagen**
+  als tot geführt war und nach dem Neu-Anlernen wieder sendet (`avail=True`, LQI 172,
+  Batterie 100 %). Er hing schon im Netz (`zha/devices` blieb bei 64 Geräten) — ZHA hat ihn
+  anhand der IEEE an seinen **bestehenden** Eintrag gehängt. Umbenannt auf
+  **„Button Fliegengrill"**, Bereich `wohnzimmer`.
+* **Die Falle, die viel Zeit gekostet hätte:** Das Taster-Gerät stand auf **`disabled_by: user`**,
+  und deshalb hatten alle sieben Entitäten `disabled_by: device` — sie antworten mit **HTTP 404**
+  und sind im UI unsichtbar. Die Automation lief trotzdem, weil **ZHA `zha_event` auch für
+  deaktivierte Geräte verarbeitet**. Reparatur ist das **Gerät** freischalten (`disabled_by: null`),
+  nicht die Entitäten: ein Durchlauf über die Entitäten fand „nichts zu tun", und ~25 s später
+  waren die Werte da. Merke: `disabled_by` am **Gerät** lesen, bevor man Entitäten anfasst.
+* **Drei Automationen, alle `state=on`:**
+  * `fliegengrill_an` — 00:00 → `switch.turn_on`
+  * `fliegengrill_aus` — 05:00 → `switch.turn_off`
+  * `fliegengrill_taster` — `zha_event` mit **Filter im Trigger** (`event_data.device_ieee`),
+    Bedingung `command == 'toggle'`, Aktion `switch.toggle`, `mode: single`
+  Beide Zeit-Automationen tragen die Bedingung
+  `{{ now().month >= 4 and now().month <= 11 }}` (April–November). **HA läuft auf
+  `Europe/Berlin`** — 00:00/05:00 sind Hauszeit, nicht Serverzeit. „Von 0 bis 5" ist die
+  Vorgabe des Besitzers (Fliegengrill in der Nacht).
+* **End-to-End bewiesen, nicht behauptet:** ein künstliches Ereignis über
+  `POST /api/events/zha_event` schaltete die Dose (`last_triggered` gesetzt), und danach hat der
+  **echte** Taster **sieben Mal** hintereinander umgeschaltet (17:52:44 … 17:54:17) — jede
+  Bewegung sitzt. Erst damit ist der Funkweg belegt und nicht nur die Automatik.
+* **Falle beim Rücklesen der Automation:** HA nennt die Felder im Config-View **plural**
+  (`triggers` / `conditions` / `actions`), nicht `trigger`/`condition`/`action`. Ein Rücklesen mit
+  den Singular-Schlüsseln zeigt `None` für einen völlig korrekten Eintrag — das sah nach einem
+  fehlgeschlagenen Schreibvorgang aus und war keiner.
+* **Nebenbefund:** Der Wasserkocher fiel um 17:47:19 von 1964 W auf 0,0 W zurück, die Spannung
+  auf 237 V. Und `zha_event` meldet für die **Eingangstür** (`00:15:8d:00:8b:bb:3c:8c`) um
+  17:55:18/17:55:25 `attribute_updated` — sie lebt also weiter.
+
 ## Zuletzt behoben (25.09.2026)
 
 * **Batterie-Runde: vier Geräte zurück, und eine Fehldeutung korrigiert.** Treppe Keller, Erstes
