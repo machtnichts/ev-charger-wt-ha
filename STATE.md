@@ -1206,7 +1206,7 @@ itself.**
   A sleeping presence/battery sensor, by contrast, generates none. An empty event stream proves
   nothing about sensors; the state change of the entity remains authoritative.
 
-## Recently fixed (23.09.2026)
+## Recently fixed (2026-09-23)
 
 * **HA's location was still on the factory setting Amsterdam** (52.3731/4.8903, elevation 0 m) —
   every sun-based HA automation and later the fallback of our forecast rule would thereby have
@@ -1229,7 +1229,7 @@ itself.**
   and the proxy still counts `upstream_writes: 0`.
 * **PV forecast step 1** built and live (see its own section above).
 
-## Recently fixed (22.09.2026)
+## Recently fixed (2026-09-22)
 
 * **The Deye poller now falls silent at night and wakes on the meter** (different project:
   `HA-POWER-DASHBOARD/deye-pv-rs`). Before: a failed attempt every 33 s, each with a log line
