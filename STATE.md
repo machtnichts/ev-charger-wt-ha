@@ -280,6 +280,33 @@ NOTHING.** That way he can first judge whether such a forecast is any good for h
 
 ## Recently fixed (2026-10-03)
 
+**The proxy's `response_timeout` stood at 5.0 while every note about it said 1 s — now 1.0, with
+a reason that still exists.**
+
+* **The old reason no longer holds.** 1 s was chosen because a SunSpec model scan probed address
+  50000, which this inverter never answers, and a longer proxy timeout let that client give up
+  first (`i/o timeout`, then `not a SunSpec device`). Measured in the logs of 14.09.–03.10.:
+  **not one read in the 50000–56999 range**. That client is gone. (An earlier count of "4609
+  hits" was a wrong grep of mine — my pattern also matched the 57xxx vendor blocks.)
+* **The error picture that is actually there:** over 6.9 days and 18679 device reads
+  `upstream_timeouts` was **0**, while `upstream_errors` reached 744 — all of them `failed to
+  fill whole buffer`, i.e. the device **closing** the connection, always on `read 32@40071`
+  (the app's own inverter block, `solaredge.py:42`; 964 occurrences, 964 of them failures). A
+  response timeout never fires for that. It costs the app one cycle per event: 2–6 per day now,
+  but up to **480/day between 25.09. and 01.10.** — cause unexplained, worth its own look.
+* **The number that was missing:** the app's Modbus client waits **6 s** (`drivers/modbus.py:20`,
+  nothing overrides it), so a 5 s proxy timeout sat only 1 s below it — the app could have timed
+  out before the proxy answered, exactly the confusion the old note described.
+* **Decision: 1.0**, for two reasons that hold today: the proxy holds the plant's *only* device
+  connection, so one hung read stalls every reader — 1 s bounds that; and 1 s keeps the proxy
+  clearly under the app's 6 s, so the app always receives the proxy's clean exception `0x0B`
+  instead of its own socket error. 1 s is ~10x the measured median (50–100 ms, p95 161 ms).
+* **Checked:** restarted 17:41:56. After three app cycles `upstream_timeouts 0`,
+  `upstream_errors 0`, no warning in the log, app card "PROXY OK", site values fresh (666 W).
+  The single `site read failed: connection closed` at 17:42:38 is the restart itself.
+  **Still to watch:** this counter must stay 0 over the coming days; if it rises, 1 s is too
+  tight for this inverter.
+
 **The buttons in the "Mode & settings" card seemed sluggish to respond — it was the display,
 not the switching.**
 
@@ -1340,14 +1367,6 @@ itself.**
   new code path, and even a pure display path drags the control down with it.
 
 ## Open items
-
-1. **`response_timeout` in the running proxy config disagrees with every note about it.**
-   `config/muxproxy.json` says **5.0**, its own `_comment` says 1 s and gives the reason: a
-   SunSpec model scan probes address 50000, which this inverter never answers, and with a
-   longer timeout the client gives up first → `i/o timeout`, then `not a SunSpec device`.
-   Real reads take ~50-100 ms. Nothing that runs is in doubt; which value is *wanted* is an
-   owner decision - 1.0 restores the documented behaviour, 5.0 is what has been in service.
-   (Wait for the owner's answer; do not change it silently.)
 
 2. The HA Lovelace dashboard (`/strom-verbrauch`) was **never** visually checked in HA itself
    (login wall); the substitute is `docs/preview.html`. This is the biggest open
