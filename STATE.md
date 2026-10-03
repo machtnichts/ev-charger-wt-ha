@@ -288,24 +288,37 @@ a reason that still exists.**
   first (`i/o timeout`, then `not a SunSpec device`). Measured in the logs of 14.09.–03.10.:
   **not one read in the 50000–56999 range**. That client is gone. (An earlier count of "4609
   hits" was a wrong grep of mine — my pattern also matched the 57xxx vendor blocks.)
-* **The error picture that is actually there:** over 6.9 days and 18679 device reads
-  `upstream_errors` reached 744 (**~4 %** of reads) and `upstream_reconnects` 741 — the device
-  **closing** the connection (`failed to fill whole buffer`), which no timeout value causes or
-  cures. The logged failures are spread over *every* block the app reads, not one: `2@57716`
-  5011, `105@40190` 3948, `2@57732` 3780, `50@40071` 3493, `4@57722` 1229, `4@57718` 1022,
-  `32@40071` 964 — 19508 `failed:` lines in the three log files of 14.09.–03.10. Successful
-  reads are **never** logged (`policy.log_every_request: false`; only exceptions, timeouts and
-  failures are, `src/proxy.rs:326/333/335`), so a count like "964" is 964 *failed attempts*,
-  not 964 reads — the successes are invisible in the log. Each failure costs an upstream
-  reconnect and a 5 s backoff, and costs the app a cycle when its own site read hits one:
-  2–4/day in quiet times, up to **60/day between 25.09. and 01.10.** (device-side; cause
-  still unexplained).
-* **The one timeout measurement that exists:** `read N@M timed out` appeared 531 times in the
-  same logs — 108/149/106/164 per day on 14.–17.09. (the switchover days, at
-  `response_timeout` 5 s), then 2 on 23.09., 2 on 28.09. and **none since**. Slow reads are
-  therefore real but rare, and at 1 s they would have become failures — exactly what to watch
-  now, because a read in the 1–5 s window was invisible before and logs as `timed out` from
-  here on.
+* **The failure picture, by date — and it is 95 % history, not this app.** The three logs hold
+  19,508 `failed:` (EOF) attempts, but **19,036 of them fall on 14.–17.09.**, on the read pattern
+  of the *old* consumer: `2@57716` 5011, `105@40190` 3948, `2@57732` 3780, `50@40071` 3493,
+  `4@57722` 1229, `4@57718` 1022 — full SunSpec models and single registers, none of which this
+  app ever asks for. From 18.09. (the charging app becomes the client) that pattern drops to
+  **zero** and what remains is the app's own three windows: `32@40071` (964), `53@40190` (14),
+  `18@57716` (15). Day by day in the app era: 18.09. 39, then 1–3/day to 24.09., a burst of
+  40/72/239/241/70/71/85 on 25.09.–01.10., then 3 and 1 on 02./03.10. — roughly **1–3 lost
+  cycles per day** out of ~2880, and each one costs the app the cycle.
+* **The mechanism, from the code — not a register count.** The proxy takes the upstream answer
+  with `read_exact` (`src/upstream.rs:230/244`); a short frame followed by close surfaces as
+  Rust's `failed to fill whole buffer` (UnexpectedEof). A device that *refuses* a quantity
+  answers with a Modbus exception — a complete frame — it does not close the socket. So this is
+  the device **closing an idle connection**, and the *first* read of the following cycle is the
+  one that discovers it; that is why `32@40071`, the first of the three windows, is the one that
+  fails (the other two follow on the same connection and are fine). The proxy then answers the
+  client with exception `0x0B` instead of an expired frame and leaves the device alone for 5 s —
+  long enough for the app's own 0.25 s retry to fail too, so the cycle is lost rather than
+  recovered. **Splitting a read does not address this:** a 2-register read fails the same way
+  (5011 times above), and 32 → 16+16 would move the hit to the second half, double the requests
+  and mix two ages inside one SunSpec window (the AC power and its scale factor). If it is to be
+  attacked, the targets are (a) TCP keepalive on the upstream socket, so a dead connection is
+  replaced before a client asks instead of being discovered by the first read, or (b) not
+  applying the 5 s "leave the device alone" to a plain EOF, since a closed connection is a
+  reconnect case, not a flaky device — then the app's built-in retry recovers the cycle.
+* **Two other failure kinds, both rare and both elsewhere:** `read N@M timed out` (>5 s response)
+  appears 531 times, **all on 14.–17.09. and all on the old consumer's blocks** (`50@40071` 298,
+  `4@57718` 208) — in the app era **no read has ever exceeded 5 s**. And 5 ×
+  `connect: connection timed out` (evenings of 14./15./16./23./28.09.): the proxy could not reach
+  the device at all; the last two hit the app's `32@40071` and cost it a cycle each. Since the
+  bound is now 1 s, a read in the 1–5 s window becomes visible as `timed out` for the first time.
 * **The number that was missing:** the app's Modbus client waits **6 s** (`drivers/modbus.py:20`,
   nothing overrides it), so a 5 s proxy timeout sat only 1 s below it — the app could have timed
   out before the proxy answered, exactly the confusion the old note described.
