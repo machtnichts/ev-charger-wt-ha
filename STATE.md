@@ -280,6 +280,30 @@ NOTHING.** That way he can first judge whether such a forecast is any good for h
 
 ## Recently fixed (2026-10-03)
 
+**The actual cause of the lost cycles: the device closes every connection after ~330 s — fixed
+by not carrying a connection across the idle stretch.**
+
+* **Measured:** of 844 failed reads whose upstream-connection age is known, **809 sat on
+  connections 5–6 minutes old** — median and p90 exactly **330.3 s = 11 × the app's 30 s
+  cycle**. The raw log shows the loop: client connects, one upstream connection is opened, 11
+  read cycles run over it, the 12th read (at 330 s) gets EOF, the client is served exception
+  `0x0B` and loses that cycle, 30 s later it reconnects. So the device closes a connection
+  after ~330 s *whether or not it is used*; the proxy was carrying one connection across those
+  11 cycles and letting the device close it under a read.
+* **The fix: `upstream.idle_close_s`** (default 0 = old behaviour, set to 10 in service) — the
+  proxy closes an upstream connection once it has been quiet that long, so each burst opens
+  its own and no connection ever reaches 330 s. A connect costs **~1 ms** here (median 1 ms,
+  max 32 ms from client arrival to upstream connect), and this device has already taken far
+  more: 10,474 connects in ~1.5 days (≈7000/day) during the old consumer's era. The new
+  counter **`upstream_idle_closes`** grows while `upstream_errors` stays flat — that is the
+  proof it is housekeeping, not a fault. It is deliberately *not* counted in
+  `upstream_reconnects` (the app's card shows that as a fault signal) and does not enter the
+  failure backoff.
+* **Verified offline:** 2 new conformance tests (an idle stretch produces exactly one new
+  connection and the reads *within* a burst still share it; 0 keeps the old behaviour),
+  44 cargo tests, 17/17 cross-check, **14/14 differential against the baseline** (the wire is
+  byte-for-byte unchanged), 13/13 poll-range config.
+
 **The proxy's `response_timeout` stood at 5.0 while every note about it said 1 s — now 1.0, with
 a reason that still exists.**
 
