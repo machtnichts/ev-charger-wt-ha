@@ -303,6 +303,19 @@ by not carrying a connection across the idle stretch.**
   connection and the reads *within* a burst still share it; 0 keeps the old behaviour),
   44 cargo tests, 17/17 cross-check, **14/14 differential against the baseline** (the wire is
   byte-for-byte unchanged), 13/13 poll-range config.
+* **Deployed 2026-10-03 at 18:07:01 host time (20:07 in the house):** stop → `make static
+  install` → start, the installed binary (`9f552c32`) checked against the build, and the
+  static build also put through `make prodcheck-static` (13/13) before it was started. The
+  first minutes show what was intended: `upstream_idle_closes 1` while `upstream_errors` and
+  `upstream_reconnects` stay 0, and in the log a fresh `upstream connected` **per burst
+  without a new `client connected` in between** (18:07:39 and 18:08:39) — the app's own client
+  connection stays open, only the device session is renewed. The app's proxy card reads
+  `PROXY OK`, 6 reads, 0 errors, site value fresh (671.8 W).
+* **Still to do:** (a) watch `upstream_errors` over the next days — it must stay flat while
+  `upstream_idle_closes` climbs (~one per read cycle); (b) the baseline in
+  `baseline/muxproxy` is still the 19.09 build, i.e. this change's yardstick — once the
+  counters have been clean for a day, `make baseline` moves it to this build; (c)
+  `upstream_idle_closes` is in `/metrics` but not surfaced in the app's card yet.
 
 **The proxy's `response_timeout` stood at 5.0 while every note about it said 1 s — now 1.0, with
 a reason that still exists.**
