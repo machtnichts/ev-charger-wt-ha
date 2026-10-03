@@ -289,11 +289,23 @@ a reason that still exists.**
   **not one read in the 50000–56999 range**. That client is gone. (An earlier count of "4609
   hits" was a wrong grep of mine — my pattern also matched the 57xxx vendor blocks.)
 * **The error picture that is actually there:** over 6.9 days and 18679 device reads
-  `upstream_timeouts` was **0**, while `upstream_errors` reached 744 — all of them `failed to
-  fill whole buffer`, i.e. the device **closing** the connection, always on `read 32@40071`
-  (the app's own inverter block, `solaredge.py:42`; 964 occurrences, 964 of them failures). A
-  response timeout never fires for that. It costs the app one cycle per event: 2–6 per day now,
-  but up to **480/day between 25.09. and 01.10.** — cause unexplained, worth its own look.
+  `upstream_errors` reached 744 (**~4 %** of reads) and `upstream_reconnects` 741 — the device
+  **closing** the connection (`failed to fill whole buffer`), which no timeout value causes or
+  cures. The logged failures are spread over *every* block the app reads, not one: `2@57716`
+  5011, `105@40190` 3948, `2@57732` 3780, `50@40071` 3493, `4@57722` 1229, `4@57718` 1022,
+  `32@40071` 964 — 19508 `failed:` lines in the three log files of 14.09.–03.10. Successful
+  reads are **never** logged (`policy.log_every_request: false`; only exceptions, timeouts and
+  failures are, `src/proxy.rs:326/333/335`), so a count like "964" is 964 *failed attempts*,
+  not 964 reads — the successes are invisible in the log. Each failure costs an upstream
+  reconnect and a 5 s backoff, and costs the app a cycle when its own site read hits one:
+  2–4/day in quiet times, up to **60/day between 25.09. and 01.10.** (device-side; cause
+  still unexplained).
+* **The one timeout measurement that exists:** `read N@M timed out` appeared 531 times in the
+  same logs — 108/149/106/164 per day on 14.–17.09. (the switchover days, at
+  `response_timeout` 5 s), then 2 on 23.09., 2 on 28.09. and **none since**. Slow reads are
+  therefore real but rare, and at 1 s they would have become failures — exactly what to watch
+  now, because a read in the 1–5 s window was invisible before and logs as `timed out` from
+  here on.
 * **The number that was missing:** the app's Modbus client waits **6 s** (`drivers/modbus.py:20`,
   nothing overrides it), so a 5 s proxy timeout sat only 1 s below it — the app could have timed
   out before the proxy answered, exactly the confusion the old note described.
