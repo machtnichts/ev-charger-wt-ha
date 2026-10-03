@@ -3,8 +3,9 @@
 ## 1. The proxy (on this host, knetzwerk)
 
 The proxy must own the inverter connection before anything else reads the plant. It is the
-Rust binary; the Python implementation it was ported from is kept in the same repository
-under `reference/` for verification only (steps 1b, if ever needed).
+Rust binary. The Python implementation it was ported from is **gone** (removed
+2026-10-03, after the differential test proved the port equal); verification now runs
+against the wire-protocol suite and against the last known-good build (steps 1b).
 
     # build it (glibc, or `make static` for the fully static binary the unit expects)
     cd /home/adermake/EV-CHARGER-WT-HA/modbus-proxy-rs
@@ -23,10 +24,13 @@ under `reference/` for verification only (steps 1b, if ever needed).
     # survive logout / reboot (needs sudo once, so the user has to run it)
     sudo loginctl enable-linger adermake
 
-1b. The Python reference (only for comparisons, never for the plant):
+1b. Verification (never against the plant - stubs only):
 
     cd /home/adermake/EV-CHARGER-WT-HA/modbus-proxy-rs && make check
-    # or on its own: python3 reference/muxproxy.py -c reference/config.json
+
+    # Before installing a NEW build: keep the one that is in service as the
+    # yardstick, then check the fresh build against it, byte for byte.
+    make baseline && make differential
 
 Health check:
 

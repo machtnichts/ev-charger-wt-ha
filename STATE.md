@@ -63,12 +63,12 @@ expired, and if nothing new could be read, the client gets the **fault**
 measurement on the wire and the charging app would have no chance of recognising it. Consequence for the app: a
 failed read yields no decision at all (no cycle), and a running
 charge is ended after `site_stale_s` (600 s) — never started or
-readjusted on the basis of old numbers. The Rust proxy and the Python reference behave the same, the conformance test
-pins it (`an_expired_read_is_reported_instead_of_served_stale`). The Python reference has lived
-**inside the proxy repo** as `modbus-proxy-rs/reference/` since 2026-10-03 (it used to sit in
-this repo as `modbus-proxy/`), so the port and the implementation it is checked against are
-versioned together; the checks that need it (`make check`: conformance, cross-comparison,
-differential) find it there.
+readjusted on the basis of old numbers. The Rust proxy and the Python reference behaved the
+same **on the wire** — 14/14 identical responses, and the conformance test pins the expiry
+rule (`an_expired_read_is_reported_instead_of_served_stale`). The **Python implementation
+itself no longer exists** (deleted 2026-10-03, see the layout note under Repositories):
+what came out of it and stayed is its wire-protocol suite, which `make check` still runs
+against the Rust binary.
 
 The wallbox is read via the **measured** `nrg` offsets (FW 041.0, the documentation is
 off by one position): `nrg[0..2]` volts · `nrg[3]` constant 1 · `nrg[4..6]` currents
@@ -1341,6 +1341,14 @@ itself.**
 
 ## Open items
 
+1. **`response_timeout` in the running proxy config disagrees with every note about it.**
+   `config/muxproxy.json` says **5.0**, its own `_comment` says 1 s and gives the reason: a
+   SunSpec model scan probes address 50000, which this inverter never answers, and with a
+   longer timeout the client gives up first → `i/o timeout`, then `not a SunSpec device`.
+   Real reads take ~50-100 ms. Nothing that runs is in doubt; which value is *wanted* is an
+   owner decision - 1.0 restores the documented behaviour, 5.0 is what has been in service.
+   (Wait for the owner's answer; do not change it silently.)
+
 2. The HA Lovelace dashboard (`/strom-verbrauch`) was **never** visually checked in HA itself
    (login wall); the substitute is `docs/preview.html`. This is the biggest open
    uncertainty in the dashboard part.
@@ -1436,12 +1444,15 @@ for t in test_safety test_controller test_phase_probe test_service_smoke test_pr
 python3 /tmp/health.py                      # live situation in ~10 lines
 curl -s 127.0.0.1:7080/api/state            # the same situation as JSON
 curl -s 127.0.0.1:1504/status               # proxy statistics
-cd ../modbus-proxy-rs && make check         # cargo + conformance + cross-comparison + differential + production config
+cd ../modbus-proxy-rs && make check         # cargo + conformance + cross-comparison + differential (vs baseline) + poll-range config
 ```
 
 Important when installing the proxy: `make static install` fails with "Text file
 busy" as long as it runs → **stop, install, start**. And: check the installed binary
-against the build (`sha256sum bin/muxproxy`), do not assume.
+against the build (`sha256sum bin/muxproxy`), do not assume. Order for any proxy change:
+`make check` → **`make baseline`** (saves the build that is now leaving service) →
+`make static install` → `make check` again (the differential then compares the new build
+against that baseline, 14/14 expected).
 
 ## Rollback to the direct path (consumer without proxy)
 
@@ -1481,20 +1492,46 @@ conformance tests in the repo itself remain the reference.
 Further changes as usual: `git add` / `git commit` / `git push` in the respective
 directory; the working copies track `origin/main`.
 
-**Layout change on 2026-10-03:** the Python reference proxy moved from this repo
-(`modbus-proxy/`) into the proxy repo as **`modbus-proxy-rs/reference/`** — together with its
-instruments (`reference/tools/`: `site_decode.py`, `discover_sunspec.py`, `sunspec_map.json`,
-`test_protocol_conformance.py`, `check_cache_integrity.py`, `probe_goe.py`) and its sample
-config. This repo is now **documentation only** (`STATE.md`, `README.md`, `docs/`, `LICENSE`).
-Nothing running changed: the live proxy was always the Rust binary with its own
-`config/muxproxy.json`. The Python implementation is **not installed as a service anywhere**: its
-systemd unit was deleted on 2026-10-03, on this host and in the repository - it had been disabled
-since the Rust proxy took over the port, and the reference is only run by hand for comparisons
-(`python3 reference/muxproxy.py -c reference/config.json`, or through `make check`). The paths
-were followed through the six places that named the old location (this
-file, `README.md`, `docs/INSTALL.md`, the Rust `README.md`, `src/main.rs`, and the two
-verification tools `differential_test.py` / `cross_check_python_suite.py`); `make check` in the
-proxy repo passes from the new place, which is the proof that the oracle still works.
+**Layout change on 2026-10-03, first step:** the Python reference proxy moved from this repo
+(`modbus-proxy/`) into the proxy repo as `modbus-proxy-rs/reference/` — together with its
+instruments and its sample config. This repo is now **documentation only** (`STATE.md`,
+`README.md`, `docs/`, `LICENSE`). Nothing running changed: the live proxy was always the Rust
+binary with its own `config/muxproxy.json`. The Python implementation was **never installed as
+a service anywhere** — its systemd unit was deleted on 2026-10-03 (it had been disabled since
+the Rust proxy took over the port).
+
+**Second step, same day: the Python implementation itself was deleted.** Reason, measured
+before deleting: it was no longer the same version. Side by side against the same dummy
+upstream both reported the same 16 counters, but the Python was missing
+`upstream_backoff_s`, `last_upstream_error_at` and `cache_registers`, and it never
+incremented `validation_failures` — it would have answered **"0 validation failures" while
+failures were happening**. Exactly those fields are what the charging app reads for its
+proxy card (`ha-app/evcharge/proxy.py`), so a folder named "reference" that disagrees with
+the binary in service about the status surface is worse than no folder. It had also simply
+not been touched since the port; nothing kept the two in step. What was kept:
+
+* the **wire-protocol suite** `tools/python/test_protocol_conformance.py`, still run against
+  the Rust binary by `tools/cross_check_python_suite.py` (17 checks) — that suite was written
+  against the protocol, not against an implementation, which is what makes it an oracle;
+* the four hand instruments and the measured map: `site_decode.py`, `discover_sunspec.py`,
+  `check_cache_integrity.py`, `probe_goe.py`, `sunspec_map.json`;
+* the Python-era **poll-range config** as `config/poll-ranges.json` (19 ranges,
+  `expect_header`, `sf_offsets`) — kept because it is the only thing that exercises the
+  polling and validation path; the config in service has **no poll ranges at all**.
+
+**The differential test changed sides with it.** It used to compare Python against Rust. From
+now on it compares **the fresh build against the last known-good build**: `make baseline`
+copies the binary in service (`bin/muxproxy` → `baseline/muxproxy`, both unversioned, ignored
+by git), and `make differential` puts that build and the new one in front of their own stub
+and compares 14 response PDUs byte for byte. Same strength, no second implementation to
+maintain — and the first baseline is exactly the binary that had already been proved equal to
+the Python. `make check` tolerates a missing baseline (a fresh clone cannot have one) with a
+loud note; an explicit `make differential` fails instead of quietly comparing nothing.
+
+**Verified after the change:** `make check` green — 38 cargo tests, 17/17 cross-check,
+**14/14 differential** (this build vs the baseline of 19.09), 13/13 poll-range config. The
+paths were followed through every place that named the old location (this file, `README.md`,
+`docs/INSTALL.md`, the Rust `README.md`, `INSPECT`/tools, `.gitignore`).
 
 **Deliberately not in the repo**: `bin/` (built binary), `target/`, `.venv/`, `logs/`,
 `__pycache__/`, the controller's live `config.json` (instead `config.example.json`) and
@@ -1535,10 +1572,15 @@ is dependency-free).
   (tracebacks). The proxy writes to stdout into a file, not to the journal.
 * `ha-app/config.json` — intervals, reserve, `phases`, `proxy_status`, `safety`, and the
   persisted settings (`.bak` is retained).
-* The Python reference proxy and the instruments that built it:
-  `modbus-proxy-rs/reference/` (`muxproxy.py`, `config.json`) and
-  `modbus-proxy-rs/reference/tools/` (`site_decode.py`, `discover_sunspec.py`,
-  `sunspec_map.json`, `test_protocol_conformance.py`).
+* The instruments kept from the Python era: `modbus-proxy-rs/tools/python/`
+  (`site_decode.py`, `discover_sunspec.py`, `sunspec_map.json`,
+  `test_protocol_conformance.py`, `check_cache_integrity.py`, `probe_goe.py`). The Python
+  implementation itself is **gone**; the poll-range config it ran with is
+  `modbus-proxy-rs/config/poll-ranges.json`, the config in service is
+  `modbus-proxy-rs/config/muxproxy.json`.
+* The yardstick for proxy changes: `modbus-proxy-rs/baseline/muxproxy` — the last build that
+  was in service, saved by `make baseline`, unversioned. The differential test compares the
+  fresh build against it.
 * Skills (procedural knowledge, load as needed): `ev-charging-control`,
   `modbus-single-client-proxy`, `goe-charger-http-api`, `solaredge-sunspec-modbus`,
   `home-assistant-integration`, `port-verification`.

@@ -12,13 +12,16 @@ in from a generic EV charging app is the behaviour, not the code.
 The SolarEdge inverter accepts **one** Modbus/TCP client and starts producing
 errors when several poll it. So:
 
-    1. modbus-proxy-rs/ - the single Modbus client (Rust, static binary). Polls the
-                        inverter on a fixed schedule, caches the registers, and
-                        serves any number of readers. Validates every block so a
-                        flaky inverter response cannot silently corrupt a reading.
-                        The original Python implementation it was ported from and
-                        differentially verified against is kept inside that repo as
-                        `reference/` - it is not what runs here.
+    1. modbus-proxy-rs/ - the single Modbus client (Rust, static binary). Caches the
+                        registers its readers ask for and serves any number of them
+                        from one device session (the config in service polls nothing
+                        of its own). Validates every block so a flaky inverter
+                        response cannot silently corrupt a reading.
+                        It was ported from a Python implementation of the same proxy;
+                        that implementation was removed on 2026-10-03 after the
+                        differential test proved the port byte-for-byte equal. Its
+                        wire-protocol suite and four instruments are kept in that repo
+                        under `tools/python/`; what runs here is only the Rust binary.
     2. ha-app/        - the charging logic (reads the proxy, drives the go-e),
                         packaged as a Home Assistant add-on, with a web UI, a
                         REST API and MQTT discovery.
@@ -216,13 +219,15 @@ See `docs/INSTALL.md`. In short:
 
 ## Tools
 
-The instruments used to build this live with the Python reference in the proxy repo,
-under `modbus-proxy-rs/reference/tools/` — kept because they are the fastest way to
+The instruments used to build this live in the proxy repo, under
+`modbus-proxy-rs/tools/python/` — kept because they are the fastest way to
 re-verify after any change, and all of them run without any other service being up:
 
     discover_sunspec.py       walk the SunSpec chain and dump the model map
-    site_decode.py            authoritative decoder (used by the app)
+    site_decode.py            decode a raw register dump by hand (the app decodes for
+                              itself, in ha-app/evcharge/drivers/solaredge.py)
     test_protocol_conformance.py  protocol/cache conformance against a stub
+                              (run it through tools/cross_check_python_suite.py)
     check_cache_integrity.py  scale-factor stability across repeated reads
     probe_goe.py              go-e API discovery
 
@@ -246,9 +251,11 @@ proxy's counters) and `make check` in the proxy repository.
 ## Repositories
 
 This tree is the project documentation. The two apps live
-in their own repositories, so each can be versioned and read on its own — including the
-Python reference proxy, which moved into the Rust repo as `modbus-proxy-rs/reference/`
-on 2026-10-03 so that the port and the implementation it was verified against sit together:
+in their own repositories, so each can be versioned and read on its own. The Python
+implementation the Rust proxy was ported from was removed on 2026-10-03 — the
+differential test had proved the port equal byte for byte, and keeping two
+implementations in step had already stopped working. Its wire-protocol suite and
+instruments stayed behind in the Rust repo under `tools/python/`:
 
 | Repo | Contents |
 |---|---|
