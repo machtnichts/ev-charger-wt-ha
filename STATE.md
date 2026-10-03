@@ -1487,8 +1487,11 @@ instruments (`reference/tools/`: `site_decode.py`, `discover_sunspec.py`, `sunsp
 `test_protocol_conformance.py`, `check_cache_integrity.py`, `probe_goe.py`) and its sample
 config. This repo is now **documentation only** (`STATE.md`, `README.md`, `docs/`, `LICENSE`).
 Nothing running changed: the live proxy was always the Rust binary with its own
-`config/muxproxy.json`, and the old Python unit in `~/.config/systemd/user/` is disabled and
-inactive. The paths were followed through the six places that named the old location (this
+`config/muxproxy.json`. The Python implementation is **not installed as a service anywhere**: its
+systemd unit was deleted on 2026-10-03, on this host and in the repository - it had been disabled
+since the Rust proxy took over the port, and the reference is only run by hand for comparisons
+(`python3 reference/muxproxy.py -c reference/config.json`, or through `make check`). The paths
+were followed through the six places that named the old location (this
 file, `README.md`, `docs/INSTALL.md`, the Rust `README.md`, `src/main.rs`, and the two
 verification tools `differential_test.py` / `cross_check_python_suite.py`); `make check` in the
 proxy repo passes from the new place, which is the proof that the oracle still works.
