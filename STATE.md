@@ -1,1426 +1,1527 @@
-# EV-CHARGER-WT-HA — Zustand, Regeln, offene Punkte
+# EV-CHARGER-WT-HA — state, rules, open points
 
-Stand: 2026-09-19. **Bei Widersprüchen gilt der Code und die Tests, nicht diese Datei.**
-Diese Datei ist die Übergabe: sie sagt, was läuft, warum es so ist, was als Nächstes ansteht.
+As of: 2026-09-19. **Where there are contradictions, the code and the tests apply, not this file.**
+This file is the handover: it says what is running, why it is so, what comes next.
 
-## Worum es geht (und warum)
+**Language rule, for this file and for everything else the project produces:** whatever language
+the owner writes in (German, English, Russian), every artefact is written in **English** - source
+code, comments and docstrings, documentation, commit messages, UI strings, log messages. Exactly
+two things stay as they are: a **verbatim quote of the owner** (keep the quote in his words and put
+an English gloss right after it - the quote is evidence), and **names that belong to a device or to
+Home Assistant** (entity names, automation titles, what a device's own display shows).
 
-Der Besitzer hat den früher eingesetzten Fremd-Controller (Docker-Container `evcc`) durch
-eigene, unabhängige Apps ersetzt — er wird **nicht mehr gestartet**, er würde um die Wallbox
-kämpfen. Grund (wörtlich): er will
-nicht, dass seine Apps von etwas abhängen — "in diesem Fall von Python. if the system
-changes, it can blow up my setup". Endziel: **statische Rust-Binaries mit minimalen
-Abhängigkeiten**. Die Python-Versionen bleiben unverändert bestehen; Rust ist additiv, und
-portiert wird Schicht für Schicht, sobald eine Schicht eingefroren ist. Der
-Steuerungsplan ist bewusst eingefroren ("i probably will never need the plan - so let it
+## What it is about (and why)
+
+The owner has replaced the third-party controller used earlier (Docker container `evcc`) with
+his own, independent apps — it is **no longer started**, it would fight over the wallbox.
+Reason (verbatim): he does not
+want his apps to depend on something — "in diesem Fall von Python. if the system
+changes, it can blow up my setup" (in this case on Python). End goal: **static Rust binaries with minimal
+dependencies**. The Python versions remain unchanged; Rust is additive, and
+porting happens layer by layer, once a layer is frozen. The
+control plan is deliberately frozen ("i probably will never need the plan - so let it
 as it is now").
 
-Arbeitsweise, die er erwartet: er rechnet selbst nach und hakt nach ("bist du sicher?"),
-will Messwert und Vermutung getrennt, schreibt Deutsch und erwartet knappe, belegte
-Antworten mit konkreten Zahlen. Vorgaben für dieses Projekt:
+Working style he expects: he checks the maths himself and follows up ("bist du sicher?" (are you sure?)),
+wants measured value and assumption separated, writes German and expects terse, evidenced
+answers with concrete numbers. Requirements for this project:
 
-* **Keine zusätzliche Poll-Last auf dem Wechselrichter (SE5000H, 192.168.178.84:1502).**
-  Diagnose durch Beobachtung, nicht durch mehr Anfragen.
-* Ein Gerät, das nur eine Sitzung verträgt, hat **genau eine** Sitzung (SE-Wechselrichter,
-  Deye-Logger). Nie zwei Clients gleichzeitig.
-* An der Wallbox wird **nur `amx` geschrieben, nie `amp`** ("amp will turn the flash of
+* **No additional poll load on the inverter (SE5000H, 192.168.178.84:1502).**
+  Diagnosis through observation, not through more requests.
+* A device that tolerates only one session has **exactly one** session (SE inverter,
+  Deye logger). Never two clients at the same time.
+* On the wallbox **only `amx` is written, never `amp`** ("amp will turn the flash of
   the wb to trash very soon").
-* Handmodus = **null Schreibzugriffe**.
-* Änderungen an der echten Anlage vorher ankündigen, danach den Zustand belegen.
-* Elektroinstallation wird nicht zu Testzwecken geschaltet — Sicherungen werden mit
-  eingeschleusten Zeiten/Stubs getestet, nicht am Auto.
+* Manual mode = **zero write accesses**.
+* Announce changes to the real plant beforehand, afterwards document the state with evidence.
+* Electrical installation is not switched for test purposes — fuses are tested
+  with injected times/stubs, not on the car.
 
-## Was jetzt läuft
+## What is running now
 
-| Was | Unit / Weg | Zustand |
+| What | Unit / path | State |
 |---|---|---|
-| Laderegler | `systemctl --user status evcharge-wt.service` | aktiv, Web-UI `127.0.0.1:7080`, Intervall 30 s (Auto dran) / 300 s (leer) |
-| Modbus-Proxy (Rust) | `systemctl --user status muxproxy-rs.service` | aktiv, hört `0.0.0.0:1503`, Status `:1504`, Build `abda451e49a433ff0b42df8635e512491dba3b0f` |
-| Deye-PV-Logger (Rust) | `powerdash-deye-pv-rs` | aktiv, anderes Gerät, nicht Teil der Ladekette |
-| evcc | Docker-Container | **stillgelegt** — nicht neu starten; der Laderegler steuert die Wallbox |
+| Charge controller | `systemctl --user status evcharge-wt.service` | active, Web UI `127.0.0.1:7080`, interval 30 s (car connected) / 300 s (empty) |
+| Modbus proxy (Rust) | `systemctl --user status muxproxy-rs.service` | active, listens on `0.0.0.0:1503`, status `:1504`, build `abda451e49a433ff0b42df8635e512491dba3b0f` |
+| Deye-PV logger (Rust) | `powerdash-deye-pv-rs` | active, different device, not part of the charging chain |
+| evcc | Docker container | **decommissioned** — do not restart; the charge controller drives the wallbox |
 
-Adressen: Wallbox go-e `192.168.178.22` (FW 041.0, HTTP-API v1) · Wechselrichter
-`192.168.178.84:1502` · Proxy-Adresse für Consumer `192.168.178.44:1503` · HA
+Addresses: wallbox go-e `192.168.178.22` (FW 041.0, HTTP API v1) · inverter
+`192.168.178.84:1502` · proxy address for consumers `192.168.178.44:1503` · HA
 `http://homeassistant:8123` (HAOS 2026.9.2).
 
-Der Lesepfad zum Wechselrichter hat sich als empfindlich erwiesen und ist eingefroren:
-**drei kleine Fenster pro Zyklus** — `(40071,32)` Wechselrichter, `(40190,53)` Zähler,
-`(57716,18)` Vendor, zusammen 103 Register. Der Bereich `40111..40189` wird bewusst
-**nie** angefasst. Vorbild war die alte openHAB-Konfiguration (`se4k.things`): zwei
-kleine Fenster alle 10 s, nie ein Register einzeln.
+The read path to the inverter has proven to be sensitive and is frozen:
+**three small windows per cycle** — `(40071,32)` inverter, `(40190,53)` meter,
+`(57716,18)` vendor, together 103 registers. The range `40111..40189` is deliberately
+**never** touched. The model was the old openHAB configuration (`se4k.things`): two
+small windows every 10 s, never a single register on its own.
 
-Der Proxy gibt **keine abgelaufenen Frames** zurück (so entschieden). Innerhalb von
-`ondemand_ttl` (10 s) teilen sich zwei Leser einen Geräte-Read; danach ist der Wert
-verfallen, und wenn nichts Neues gelesen werden konnte, bekommt der Client den **Fehler**
-(Exception `0x0B`) statt eines alten Frames — der sähe auf der Leitung wie eine frische
-Messung aus und die Lade-App hätte keine Chance, ihn zu erkennen. Folge für die App: ein
-fehlgeschlagener Read ergibt gar keine Entscheidung (kein Zyklus), und eine laufende
-Ladung wird nach `site_stale_s` (600 s) beendet — nie auf Basis alter Zahlen gestartet oder
-nachgeregelt. Rust-Proxy und Python-Referenz verhalten sich gleich, der Konformitätstest
-pinnt es (`an_expired_read_is_reported_instead_of_served_stale`).
+The proxy returns **no expired frames** (decided this way). Within
+`ondemand_ttl` (10 s) two readers share one device read; after that the value is
+expired, and if nothing new could be read, the client gets the **fault**
+(exception `0x0B`) instead of an old frame — that would look like a fresh
+measurement on the wire and the charging app would have no chance of recognising it. Consequence for the app: a
+failed read yields no decision at all (no cycle), and a running
+charge is ended after `site_stale_s` (600 s) — never started or
+readjusted on the basis of old numbers. The Rust proxy and the Python reference behave the same, the conformance test
+pins it (`an_expired_read_is_reported_instead_of_served_stale`).
 
-Die Wallbox wird über die **gemessenen** `nrg`-Offsets gelesen (FW 041.0, die Doku liegt
-um eine Stelle daneben): `nrg[0..2]` Volt · `nrg[3]` konstante 1 · `nrg[4..6]` Ströme
-(0,1 A) · `nrg[7..9]` Leistungen (0,1 kW) · `nrg[11]` Gesamtleistung (10 W) · `nrg[12..14]`
-Leistungsfaktor. Phasenzahl kommt aus den Strömen; `pha` (63) ist Kontaktorbestückung und
-wird nie geglaubt.
+The wallbox is read via the **measured** `nrg` offsets (FW 041.0, the documentation is
+off by one position): `nrg[0..2]` volts · `nrg[3]` constant 1 · `nrg[4..6]` currents
+(0.1 A) · `nrg[7..9]` powers (0.1 kW) · `nrg[11]` total power (10 W) · `nrg[12..14]`
+power factor. The number of phases comes from the currents; `pha` (63) is contactor fitment and
+is never believed.
 
-## Regeln im Regler (mit Begründung)
+## Rules in the controller (with reasoning)
 
-* **Überschuss** = Netz-Leistung (vorzeichenbehaftet) + Auto-Leistung − Batterie-Abgabe,
-  dazu die Batterie-**Aufnahme**, sobald der Akku `priority_soc` erreicht hat. Keine
-  Grundlast-Konstante: die Hauslast steht schon im Zählerwert, eine zweite Subtraktion
-  zählte sie doppelt und hielt die Ladung ~1 A zu niedrig (`residual_power_w` ist eine
-  bewusste Reserve und hier 0). Die Abgabe bleibt immer abgezogen — das Auto entlädt
-  niemals die Hausbatterie.
-* **Drei Bänder für die Batterie** (so entschieden; Verhalten aus einer generischen EV-Ladeapp übernommen):
-  **unter `priority_soc` (55 %)** hat die Batterie Vorrang: ihr Ladeanteil bleibt bei ihr,
-  das Auto lädt aus dem echten Export (in dem der Anteil schon fehlt, der Zähler misst ihn
-  mit) — es wird aber **nicht** gesperrt. Ein grauer Tag mit halbvollem Akku lädt das Auto
-  also, statt die Sonne ins Netz zu schieben. Zusätzlich stoppt die Ladung, wenn die
-  Batterie das Auto speist und nichts exportiert wird.
-  **ab `priority_soc`** wird der Ladeanteil der Batterie aufgeschlagen: das Auto überholt
-  die Batterie beim Laden, der Akku bleibt auf seinem Stand statt auf 100 % zu laufen.
-  Mehr als `max_current` (14 A) kann das Auto nicht übernehmen — der Rest geht weiter in
-  den Akku bzw. ins Netz.
-  **über `buffer_soc` (80 %)** darf die Reserve oberhalb des Buffers eine **laufende**
-  Ladung tragen: pv/minpv hält das Auto bei 6 A, statt bei nachlassender Sonne
-  abzuschalten; das geht so lange, bis der Akku wieder auf 80 % ist. Eine Ladung wird
-  **nie** aus der Batterie gestartet.
-  Die Abgabe der Batterie bleibt sonst abgezogen — das Auto entlädt die Hausbatterie nicht.
-  `battery_boost` und `buffer_start_soc` sind **entfernt** (Reste der alten
-  Buffer-Sperre; für "Akku ins Auto entladen" nimmt der Besitzer den Modus `manual`).
-  Alles drei steht im UI im Tooltip der Zeile "battery" und an den Feldern buffer/priority SOC.
-* **Strom folgt dem Überschuss sofort** im Bereich 6 A…Maximum. Hysterese gibt es nur an
-  der Untergrenze, und sie ist **asymmetrisch** (seit 21.09.2026): ein **Start** braucht die
-  Untergrenze **+100 W** (`enable_threshold_w`, so vom Besitzer gesetzt — ein später Start
-  verschenkt Sonne), eine **laufende** Ladung wird bis **−300 W** darunter **gehalten**
-  (`disable_threshold_w`, bewusst größer: ein unnötiger Stopp kostet eine Sitzung) und erst
-  darunter abgeschaltet. Bei 6 A / 1 Phase also: Start ab **1480 W**, Halten bis **1080 W**.
-  Im Band dazwischen bleibt der Zustand, wie er ist — genau das Fenster, in dem die App
-  vorher im Minutentakt gestartet und gestoppt hat.
-* **Hausbatterie-Wächter hängt an der Entscheidung, nicht am Modusnamen**: beim
-  Überschussladen wird unter `buffer_soc` nicht geladen (und der Grund angezeigt); im
-  Billigfenster ist die Batterie nicht das Thema, weil dort das Netz zahlt.
-* **Billigzeitfenster (`cheap_hours`)**: im Fenster ist alles egal — Maximum und
-  durchgehend bis zum Ende, kein Warten, keine Batteriesperre, kein Herunterregeln, keine
-  Zählerfrische-Prüfung. Am Ende **kein** Abschalten, sondern nahtlose Übergabe an die
-  PV-Regeln; die gelten davor, währenddessen und danach, damit der Modus dauerhaft an
-  bleiben kann. Eine laufende Ladung muss im Fenster **gehalten** werden — genau das war
-  der Fehler, der eine Nacht lang alle ~5 Minuten geschaltet hat (69 Flanken).
-  **Behoben am 19.09. um 07:46** (`controller.py`: Zweig ohne `and not charger.charging`);
-  drei Checks in `test_controller.py` pinnen es („a running charge in the window stays at
+* **Surplus** = grid power (signed) + car power − battery discharge,
+  plus the battery **intake**, once the battery has reached `priority_soc`. No
+  base-load constant: the house load is already in the meter value, a second subtraction
+  would count it twice and would keep the charge ~1 A too low (`residual_power_w` is a
+  deliberate reserve and here 0). The discharge always remains subtracted — the car
+  never discharges the house battery.
+* **Three bands for the battery** (decided this way; behaviour taken from a generic EV charging app):
+  **below `priority_soc` (55 %)** the battery has priority: its charging share stays with it,
+  the car charges from the real export (in which the share is already missing, the meter measures it
+  too) — but it is **not** blocked. A grey day with a half-full battery thus charges the car
+  instead of pushing the sun into the grid. In addition the charge stops when the
+  battery feeds the car and nothing is exported.
+  **from `priority_soc`** the battery's charging share is added on top: the car overtakes
+  the battery when charging, the battery stays at its level instead of running to 100 %.
+  More than `max_current` (14 A) the car cannot take over — the rest continues into
+  the battery or into the grid respectively.
+  **above `buffer_soc` (80 %)** the reserve above the buffer may carry a **running**
+  charge: pv/minpv keeps the car at 6 A instead of switching off
+  as the sun fades; that lasts until the battery is back at 80 %. A charge is
+  **never** started from the battery.
+  The battery's discharge otherwise remains subtracted — the car does not discharge the house battery.
+  `battery_boost` and `buffer_start_soc` are **removed** (remnants of the old
+  buffer block; for "Akku ins Auto entladen" (discharging the battery into the car) the owner takes the `manual` mode).
+  All three are in the UI in the tooltip of the "battery" row and on the buffer/priority SOC fields.
+* **Current follows the surplus immediately** in the range 6 A…maximum. Hysteresis exists only at
+  the lower limit, and it is **asymmetric** (since 2026-09-21): a **start** requires the
+  lower limit **+100 W** (`enable_threshold_w`, set this way by the owner — a late start
+  gives away sun), a **running** charge is **held** down to **−300 W** below it
+  (`disable_threshold_w`, deliberately larger: an unnecessary stop costs a session) and only
+  switched off below that. At 6 A / 1 phase therefore: start from **1480 W**, hold until **1080 W**.
+  In the band in between the state stays as it is — exactly the window in which the app
+  previously started and stopped on a minute-by-minute basis.
+* **House-battery guard hangs on the decision, not on the mode name**: with
+  surplus charging, charging does not happen below `buffer_soc` (and the reason is displayed); in the
+  cheap-tariff window the battery is not the topic, because there the grid pays.
+* **Cheap-tariff window (`cheap_hours`)**: inside the window everything is irrelevant — maximum and
+  continuously until the end, no waiting, no battery block, no regulating down, no
+  meter-freshness check. At the end **no** switching off, but seamless handover to the
+  PV rules; those apply before, during and after it, so that the mode can stay on
+  permanently. A running charge must be **held** inside the window — exactly that was
+  the fault that switched every ~5 minutes for a whole night (69 edges).
+  **Fixed on 19.09. at 07:46** (`controller.py`: branch without `and not charger.charging`);
+  three checks in `test_controller.py` pin it („a running charge in the window stays at
   maximum", „no dwell timer or battery block interrupts it", „and it emits no on/off
-  edge"). In `pv`/`minpv` bleibt das Fenster wirkungslos — nachts passiert dort nichts,
-  und das ist so gewollt.
-* **Phasen**: nach dem Anstecken wird **1 Phase** angenommen; der Zähler wird erst
-  geglaubt, wenn ~20 s Strom geflossen ist, und dann der **höchste** gesehene Wert bis zum
-  Abstecken gemerkt.
-* **Sicherung**: Die App zählt die **Stopps** (`alw=0` nach einem `alw=1`), die die Wallbox
-  wirklich gesehen hat, gleitend über 30 Minuten, und zeigt sie im UI. Bei 5 rastet eine
-  **Störung** ein: Ladung einmal einschalten, danach **keine** Schreibzugriffe mehr. Grund:
-  "OBC eines Autos zu reparieren kostet Tausende Euros". **Nur Stopps, nicht beide
-  Richtungen** (Entscheidung des Besitzers, 21.09.2026): jeder Start ist das Gegenstück
-  eines Stopps, das Zählen beider Richtungen meldete eine unterbrochene Sitzung als zwei
-  Ereignisse und halbierte die Toleranz. `amx=`-Schreibungen zählen **nie** — Nachregeln ist
-  kein Schalten. **Freigabe von Hand — und ein Neustart ist eine solche Handlung:
-  `systemctl --user restart evcharge-wt.service` quittiert die Störung mit Absicht**
-  (Entscheidung des Besitzers, 21.09.2026). Der Zähler lebt nur im Speicher, und das ist so
-  gewollt: wer neu startet, hat die Ursache vorher angesehen. **Nicht** gewollt ist das
-  Gegenteil — dass die Störung sich während des Laufs von selbst löst, weil der Zähler
-  altert; im Betrieb bleibt der Riegel bestehen.
-* **Session-Energie wird doppelt gemessen** (seit 22.09.2026). Die App rechnet die
-  go-e-Session aus den Phasenmessungen der Wallbox — über die **gemessene** Zykluszeit
-  (nicht `interval_s`, das ist nur das Ziel) und mit **Reset beim Abstecken**, damit
-  „Session" wirklich eine Ansteck-Sitzung meint. Parallel führt sie eine zweite Zahl über
-  den **SDM630** im Garagenstrang (`ha-app/evcharge/session_meter.py`): beim Anstecken
-  werden dessen kWh-Zähler gemerkt, während der Sitzung ist die Differenz die Session, beim
-  Abstecken wird sie als „letzte Session" eingefroren und **in `logs/sdm_sessions.csv`
-  geschrieben** (eine Zeile je Session, mit dem go-e-Wert zum Vergleich). Der SDM630 misst
-  den Garagenstrang, in den auch die Garage-PV einspeist — die Zahl ist also die **Sicht des
-  Zählers** (Auto minus PV-Anteil); Export wird mitgeführt, damit der PV-Anteil sichtbar bleibt.
-  **Drei Werte, so gewünscht** (22.09.2026): (1) go-e, (2) SDM = `import − export`,
-  (3) **SDM + Garage-PV** = `import − export + PV` — die Bilanz des Strangs, denn genau das
-  hat das Auto gezogen und der Zähler nicht gesehen. Wert 3 ist die Meinung des
-  Wechselrichters und **nur so gut wie dessen Zähler**: über das Fenster 21.09. 05:00–17:00Z
-  besteht eine **Lücke von bis zu 8 %** (Wechselrichter 4,18 kWh gegen
-  3,88 kWh, die der SDM hinausfließen sah) — **Obergrenze, keine Messung**: der Strang trägt
-  dauerhaft Router, Tor und go-e-Standby, und der SDM kann so kleine Lasten nicht **zählen**
-  (Startstrom 0,04 A), sein Exportzähler liest also genau das zu wenig, was sie verbrauchen.
-  Die 0,30 kWh Lücke sind 25 W Dauerlast über 12 h; die Schätzung des Besitzers (Router ~10 W
-  + go-e ~5 W) deckt davon schon 0,18 kWh. Der echte Fehler des Wechselrichters liegt damit
-  zwischen ~0 % und +8 %. Und nach jedem Aufwachen meldet das Register kurz
-  **0,00 kWh** (Poller-Journal 05:16:53) — solche Werte werden verworfen und gezählt
-  (`pv_artefacts`), sonst würde die nächste echte Zahl als ~279 kWh „Korrektur" erscheinen.
-  Fehlt der Zähler ganz (nachts schläft der Logger, die PV ist dann wirklich 0), ist die
-  Korrektur **0** und die CSV-Zeile sagt es; kommt er mitten in der Session, wird die Basis
-  nachgeholt und die Zeile nennt die Korrektur „teilweise".
-  **Frische:** ein Zähler, der sich nicht ändert, wird von HA **nicht** neu geschrieben — sein
-  Alter sagt also nichts. Deshalb entscheidet das Alter der **Leistung** über „stale"
-  (`entity_live` für den SDM, `entity_pv_power` für den Deye), und bei veralteten Werten
-  **wartet** die Session, statt 0 kWh zu erfinden.
-* **Der Wechselrichter wird nur gelesen, nie geschrieben** (23.09.2026, Entscheidung des
-  Besitzers: „Ich will nicht Akku steuern"). Der SE-Treiber enthielt zwei **nie aufgerufene**
-  Schreibfunktionen (Akkumodus `0xE00D`, Entladegrenze `0xE010`) und der Modbus-Client die
-  Schreibprimitive — alles **entfernt**, samt der ebenfalls toten Export-Limit-Konstanten
-  (`0xE000..0xE002`). Das ist jetzt **strukturell geprüft** (`test_solaredge_decode`): der
-  Client hat keine Schreibmethode, der Treiber nichts, was den Akku steuert, und die
-  Registeradressen dürfen im *Code* nicht wieder auftauchen (in der Modul-Doku stehen sie
-  weiter, damit klar ist, *warum* sie weg sind). **Live-Wächter:** der Proxy zählt
-  `upstream_writes`, und die App stuft jede Zahl > 0 als **„PROXY WROTE TO THE DEVICE" (bad)**
-  ein. Stand: **0 Schreibzugriffe** bei 59k Poll-Zyklen. Geschrieben wird ausschließlich die
-  **Wallbox** (Strom, Freigabe, Neutralstellung) — und nur über den einen Schreibkanal.
-* **Hauszeit ist nicht Hostzeit**: Der Host läuft UTC, gewünschte Wanduhrzeiten sind in
-  `Europe/Berlin` ausgedrückt (`Settings.timezone`, IANA-Name, sommerzeitfest).
+  edge"). In `pv`/`minpv` the window remains ineffective — at night nothing happens there,
+  and that is intended.
+* **Phases**: after plugging in **1 phase** is assumed; the meter is only
+  believed once ~20 s of current has flowed, and then the **highest** value seen is remembered until
+  unplugging.
+* **Safety latch**: The app counts the **stops** (`alw=0` after an `alw=1`) that the wallbox
+  actually saw, rolling over 30 minutes, and shows them in the UI. At 5 a
+  **fault** latches in: switch the charge on once, afterwards **no** more write accesses. Reason:
+  "OBC eines Autos zu reparieren kostet Tausende Euros" (repairing a car's OBC costs thousands of euros). **Only stops, not both
+  directions** (owner's decision, 2026-09-21): every start is the counterpart
+  of a stop; counting both directions reported an interrupted session as two
+  events and halved the tolerance. `amx=` writes count **never** — regulating is
+  not switching. **Manual release — and a restart is such an action:
+  `systemctl --user restart evcharge-wt.service` acknowledges the fault on purpose**
+  (owner's decision, 2026-09-21). The counter lives only in memory, and that is
+  intended: whoever restarts has looked at the cause beforehand. **Not** intended is the
+  opposite — that the fault clears itself during the run because the counter
+  ages; in operation the latch persists.
+* **Session energy is measured twice** (since 2026-09-22). The app computes the
+  go-e session from the phase measurements of the wallbox — over the **measured** cycle time
+  (not `interval_s`, that is only the target) and with a **reset on unplugging**, so that
+  "session" really means a plug-in session. In parallel it keeps a second figure over
+  the **SDM630** in the garage branch (`ha-app/evcharge/session_meter.py`): on plugging in
+  its kWh counter is remembered, during the session the difference is the session, on
+  unplugging it is frozen as "last session" and **written into `logs/sdm_sessions.csv`**
+  (one line per session, with the go-e value for comparison). The SDM630 measures
+  the garage branch, into which the garage PV also feeds — the figure is therefore the **view of the
+  meter** (car minus PV share); export is carried along so that the PV share remains visible.
+  **Three values, as requested** (2026-09-22): (1) go-e, (2) SDM = `import − export`,
+  (3) **SDM + garage PV** = `import − export + PV` — the balance of the branch, because exactly that
+  is what the car drew and the meter did not see. Value 3 is the inverter's
+  opinion and **only as good as its meter**: over the window 21.09. 05:00–17:00Z
+  there is a **gap of up to 8 %** (inverter 4.18 kWh against
+  3.88 kWh that the SDM saw flow out) — **upper bound, not a measurement**: the branch carries
+  permanently the router, gate and go-e standby, and the SDM cannot **count** such small loads
+  (starting current 0.04 A), so its export counter reads exactly too little of what they consume.
+  The 0.30 kWh gap is 25 W continuous load over 12 h; the owner's estimate (router ~10 W
+  + go-e ~5 W) already covers 0.18 kWh of it. The real error of the inverter thus lies
+  between ~0 % and +8 %. And after every wake-up the register briefly reports
+  **0.00 kWh** (poller journal 05:16:53) — such values are discarded and counted
+  (`pv_artefacts`), otherwise the next real number would appear as a ~279 kWh "correction".
+  If the meter is missing entirely (at night the logger sleeps, the PV is then really 0), the
+  correction is **0** and the CSV line says so; if it arrives in the middle of the session, the baseline
+  is caught up and the line calls the correction "partial".
+  **Freshness:** a counter that does not change is **not** rewritten by HA — so its
+  age says nothing. That is why the age of the **power** decides on "stale"
+  (`entity_live` for the SDM, `entity_pv_power` for the Deye), and with outdated values
+  the session **waits** instead of inventing 0 kWh.
+* **The inverter is only read, never written** (2026-09-23, owner's
+  decision: „Ich will nicht Akku steuern" (I do not want to control the battery)). The SE driver contained two **never called**
+  write functions (battery mode `0xE00D`, discharge limit `0xE010`) and the Modbus client the
+  write primitives — all **removed**, together with the likewise dead export-limit constants
+  (`0xE000..0xE002`). This is now **structurally verified** (`test_solaredge_decode`): the
+  client has no write method, the driver nothing that controls the battery, and the
+  register addresses may not reappear in the *code* (in the module documentation they
+  remain, so that it is clear *why* they are gone). **Live guard:** the proxy counts
+  `upstream_writes`, and the app classifies any number > 0 as
+  **"PROXY WROTE TO THE DEVICE" (bad)**. Status: **0 write accesses** at 59k poll cycles. Only the
+  **wallbox** is written (current, enable, neutral position) — and only via the one write channel.
+* **House time is not host time**: The host runs UTC, desired wall-clock times are expressed
+  in `Europe/Berlin` (`Settings.timezone`, IANA name, daylight-saving-safe).
 
-## PV-Prognose — Schritt 1: nur Anzeige (23.09.2026)
+## PV forecast — step 1: display only (2026-09-23)
 
-Der Besitzer will vormittags das **Auto** bevorzugt haben und nachmittags den **Akku** —
-entschieden nach Wetter, nicht nach Uhrzeit. Dafür braucht es eine lokale Prognose.
-**Gebaut ist Schritt 1: die Prognose wird angezeigt und täglich protokolliert; sie steuert
-NICHTS.** So kann er erst beurteilen, ob so eine Prognose für sein Dach taugt.
+The owner wants the **car** to have priority in the morning and the **battery** in the
+afternoon — decided by weather, not by time of day. This requires a local forecast.
+**What is built is step 1: the forecast is displayed and logged daily; it controls
+NOTHING.** That way he can first judge whether such a forecast is any good for his roof.
 
-* **Quelle:** Open-Meteo, `global_tilted_irradiance` je Dachfläche, ohne Schlüssel, ein Abruf
-  pro Stunde und Fläche. Drei Flächen, wie der Besitzer sie korrigiert hat: **4,48 kWp Ost
-  (az −90, 14 Module)**, **1,60 kWp West-Dach (az +90, 5 Module)** und **1,92 kWp West-Gaube
-  (az +90, 6 Module, flacher als das Dach)**. Standort ist **der genaue Punkt der
-  Anlage** — er steht in Home Assistant und in der lokalen `config.json` und absichtlich **nicht**
-  in diesem Repo (vorher stand hier der PLZ-Mittelpunkt, der 820 m daneben lag und heute 0,2 kWh
-  weniger prognostizierte). Rechnung: `GTI (W/m²) x kWp = Wh` je Stunde (DC-Seite), `x PR 0,85`
-  = AC-Erwartung.
-* **Belegt gegen sieben Tage mit 15-Minuten-Exporten aus dem SE-Portal** (24.09.2026; jede Datei
-  summiert sich exakt auf den Portal-Tageswert, die Zeitstempel sind Ortszeit — geprüft, indem die
-  Tagesform gegen die Prognose korreliert wurde, nicht angenommen). Prognose gegen den Nachmittag
-  (12–18 Uhr, aus den 15-Minuten-Werten):
-  05.09 **33,1 kWh Prognose / 18,8 kWh Nachmittag**; 06.09 **33,2 / 19,2**; 08.09 **31,3 / 17,9**
-  — drei Tage über **88 % der Tagesobergrenze**, dreimal ein **starker** Nachmittag.
-  21.09 25,4 / 14,1; 07.09 26,4 / 13,3; 10.09 27,8 / **8,9** — drei Tage bei **71–78 %**,
-  dreimal mittel bis schwach. **Zwischen 14,1 und 17,9 kWh liegt keine einzige Beobachtung** —
-  die beiden Gruppen überschneiden sich nicht. Daraus folgt die Schwelle: nicht 70 %, sondern
-  **~88–90 %**. Mit 90 % vom 30-Tage-Bestwert trifft die Regel **7 von 7** Tagen richtig.
-* **Widerlegt: die Tagesfaktor-Korrektur** (also die frühere Idee in diesem Abschnitt). 08.09. und
-  10.09. sind Spiegelbilder: am 08.09. war der Vormittag **tot** (2,56 von 6,88 kWh) und der
-  Nachmittag **stark** (1,13-fach); am 10.09. war der Vormittag **exakt wie prognostiziert** (0,98)
-  und der Nachmittag brach auf **0,51** ein. Der Vormittag sagt über den Nachmittag also nichts —
-  in *keine* Richtung. Ein um 12 Uhr gebildeter Tagesfaktor hätte am 10.09. „alles bestens" gesagt
-  und den Akku zugunsten des Autos leerlaufen lassen. Der Faktor wird nur noch **mitgeschrieben**,
-  nicht mehr verfolgt.
-* **Nebenbefund, der die Kalibrierung erklärt:** über 23 Tage sah die Prognose-Tagessumme
-  unverzerrt aus (Mittel 1,008) — aber der **Abend** (Akku-Entladung, 1,13- bis 1,58-fach) verdeckt,
-  dass der **Nachmittag** im Mittel nur **0,71** der Prognose liefert. Für diese Regel zählt der
-  Nachmittag, nicht die Tagessumme: **die Tagessumme taugt als Anzeige, nicht als Aussage über die
-  Tagesform.** Deshalb ist die Tagesform (Vormittag/Mittag/Nachmittag/Abend) jetzt Teil jeder
-  Tageszeile.
-* **Die Form der Messwerte kommt aus dem Stundenschrieb** (`logs/pv_hourly.csv`, kumulativ je
-  Stunde) — er existiert genau deshalb, bevor die Regel existiert.
-* **Pin (die Zusage von Schritt 1):** der Controller **kennt das Wort `forecast` nicht**
-  (`tests/test_pv_forecast.py` prüft das, plus: das Modul hat kein Aktuator-Vokabular). Die
-  Prognose *kann* nichts schalten, solange diese Prüfung grün ist.
-* **Der Faktor `factor()`** = gemessen heute / Prognose für genau dieses Fenster, nur mit
-  echter Basis: unter **0,05 kWh** Messung gibt es **keinen** Faktor (der Tag hat noch nicht
-  angefangen — still), außerhalb **0,25–1,60** eine Warnung und ebenfalls keinen. Kein Faktor
-  heißt: der spätere Regler fällt auf die sonnenstands-relative Notlösung zurück, nie auf
-  geratene Zahlen.
-* **Daten — alles auf Platte, nichts nur im Speicher** (ein Neustart darf die Historie nicht
-  kosten): `logs/pv_forecast_today.json` wird laufend überschrieben (ein Neustart setzt den Tag
-  fort), `logs/pv_forecast.csv` bekommt je **fertigem Tag eine Zeile**: Prognose (gesamt **und** in
-  vier Tagesabschnitten), beide Messwerte (AC- und Array-Seite), beide Faktoren,
-  Haus-/Auto-/Akku-Energie, SOC-Bereich, `samples` — und die Regel-Spalten `best30_kwh` (Referenz),
-  `best30_threshold_kwh`, `best30_pct`, `rule_best_says` (Regel B) und `rule_margin_says` (Regel A).
-  Dazu `logs/pv_days_seed.csv` mit den **22 Tageswerten aus dem PV-Portal-Export**, damit die
-  30-Tage-Referenz nach einem Neustart sofort existiert (aktuell der Bestwert **33,498 kWh** vom
-  06.09.).
-  **Seit 25.09. steht auch der Garagenzähler in der Zeile** (`sdm_import_kwh`, `sdm_export_kwh`
-  und die Tagesdifferenz `sdm_import_day_kwh`/`sdm_export_day_kwh`) — das ist die Referenz des
-  Besitzers fürs Auto. Anlass: am **23.09. gingen 19,38 kWh ins Auto**, während der Dienst noch
-  nicht lief; die Tageszeile bucht dort `car_kwh 0.0`. Die Zählermitführung in derselben Zeile
-  macht solche Lücken sichtbar, statt sie Wochen später von Hand zu finden (Summe 22.–25.09.:
-  **29,22 kWh** am Zähler gegen 7,63 kWh in der App-Zählung). Die Tagesdifferenz entsteht aus dem
-  letzten Abschluss; am ersten Tag bleibt sie leer statt geraten.
-* **`samples` ist wichtig:** die Tageswerte sind eine Zero-Order-Hold-Auslesung, sie erben die
-  Lesekadenz des Wechselrichters (mit Auto alle ~5 s, ohne Auto bewusst gedrosselt — die
-  Regel „kein zusätzlicher Poll-Verkehr" gilt auch hier). Bei veralteten Messwerten integriert
-  der Regler **nichts** (Stale-Gate), statt alte Werte weiterzuzählen.
-* **Die Produktion kommt jetzt aus dem Wechselrichter-Zähler, nicht aus einem Integral**
-  (23.09.2026): SunSpec model 101 `WH` (Wort 22/23, Skalenfaktor bei 24) liegt **im ohnehin
-  gelesenen Fenster** — kostet also **null** zusätzlichen Modbus-Verkehr (ein Test pinnt: es
-  bleiben drei Lesevorgänge mit 103 Registern) — und ist exakt: er verliert nichts, während der
-  Dienst steht, und er zählt die spätere **Akku-Entladung mit** (das ist die Zahl, die die
-  Monitoring-App „Produktion" nennt, und sie ist fair: gezählt wird einmal, was der
-  Wechselrichter abgegeben hat). Live belegt: über dieselben 3,5 Minuten stieg der Zähler um
-  **0,0200 kWh** und das AC-Integral der App um **0,0200 kWh** — identisch. Lebensdauerstand
-  23.09.: **29.267,336 kWh** (Skalenfaktor 0).
-* **Achtung beim Vergleichen nach einem Neustart:** das Integral wird aus der Tagesdatei
-  **fortgesetzt**, der Zähler-Startpunkt nur dann, wenn die Tagesdatei einen hat — direkt nach
-  einem Neustart können die beiden Zahlen also **verschiedene Fenster** abdecken. Vergleichen
-  heißt: **Deltas über dasselbe Fenster**, nie die Gesamtwerte (der erste Blick zeigte deshalb
-  0,100 gegen 0,032 kWh und war kein Fehler). Ein Startpunkt, der nicht um Mitternacht gesetzt
-  wurde, ist in der Zeile als `se_partial` markiert.
-* **Regel B ist gebaut — als Anzeige mit Historie** (24.09.2026): die Prognose wird gegen den
-  **besten vollständigen Tag der letzten 30** gestellt, Schwelle **90 %**; darüber „Auto-Vorrang",
-  darunter „Akku-Vorrang". Die Referenz kommt aus der eigenen Messreihe, damit sie mit der
-  Jahreszeit mitwächst (Juni ~52 kWh, September ~33,5 kWh). Beide Regeln werden **täglich
-  mitgeschrieben**, die Historie entscheidet später, welche Recht hatte. Im UI stehen beide:
-  „forecast vs best day (30d)" und „rule B (season) would say". **Es steuert weiterhin nichts** —
-  der Controller-Pin ist unverändert grün.
-* **Offen (Steuerung, wartet auf die gesammelten Tage):** erst verdrahten, wenn die Historie die
-  Regel bestätigt. Die Schätzgrößen von Regel A (`house_reserve_kwh`, Marge 1,3) bleiben
-  Platzhalter und werden für Regel B voraussichtlich nicht gebraucht.
+* **Source:** Open-Meteo, `global_tilted_irradiance` per roof surface, without a key, one request
+  per hour and surface. Three surfaces, as the owner corrected them: **4.48 kWp east
+  (az −90, 14 modules)**, **1.60 kWp west roof (az +90, 5 modules)** and **1.92 kWp west dormer
+  (az +90, 6 modules, flatter than the roof)**. The location is **the exact point of the
+  plant** — it is in Home Assistant and in the local `config.json` and deliberately **not**
+  in this repo (previously the postcode centre stood here, which was 820 m off and today forecast 0.2 kWh
+  less). Calculation: `GTI (W/m²) x kWp = Wh` per hour (DC side), `x PR 0.85`
+  = AC expectation.
+* **Evidenced against seven days with 15-minute exports from the SE portal** (2026-09-24; each file
+  sums exactly to the portal day value, the timestamps are local time — checked by correlating the
+  day shape against the forecast, not assumed). Forecast against the afternoon
+  (12–18 h, from the 15-minute values):
+  05.09 **33.1 kWh forecast / 18.8 kWh afternoon**; 06.09 **33.2 / 19.2**; 08.09 **31.3 / 17.9**
+  — three days above **88 % of the daily ceiling**, three times a **strong** afternoon.
+  21.09 25.4 / 14.1; 07.09 26.4 / 13.3; 10.09 27.8 / **8.9** — three days at **71–78 %**,
+  three times medium to weak. **Between 14.1 and 17.9 kWh there is not a single observation** —
+  the two groups do not overlap. From this follows the threshold: not 70 %, but
+  **~88–90 %**. With 90 % of the 30-day best value the rule gets **7 of 7** days right.
+* **Refuted: the day-factor correction** (that is, the earlier idea in this section). 08.09 and
+  10.09 are mirror images: on 08.09 the morning was **dead** (2.56 of 6.88 kWh) and the
+  afternoon **strong** (1.13-fold); on 10.09 the morning was **exactly as forecast** (0.98)
+  and the afternoon collapsed to **0.51**. The morning therefore says nothing about the afternoon —
+  in *no* direction. A day factor formed at 12 o'clock would have said "all is well" on 10.09
+  and let the battery run empty in favour of the car. The factor is now only **recorded along**,
+  no longer followed.
+* **Side finding that explains the calibration:** over 23 days the forecast day total looked
+  unbiased (mean 1.008) — but the **evening** (battery discharge, 1.13- to 1.58-fold) concealed
+  that the **afternoon** on average delivers only **0.71** of the forecast. For this rule the
+  afternoon counts, not the day total: **the day total works as a display, not as a statement about the
+  day shape.** That is why the day shape (morning/midday/afternoon/evening) is now part of every
+  day record.
+* **The shape of the measured values comes from the hourly log** (`logs/pv_hourly.csv`, cumulative per
+  hour) — it exists precisely for this reason, before the rule exists.
+* **Pin (the promise of step 1):** the controller **does not know the word `forecast`**
+  (`tests/test_pv_forecast.py` checks this, plus: the module has no actuator vocabulary). The
+  forecast *cannot* switch anything as long as this check is green.
+* **The factor `factor()`** = measured today / forecast for exactly this window, only with
+  a real basis: below **0.05 kWh** measurement there is **no** factor (the day has not yet
+  started — silent), outside **0.25–1.60** a warning and likewise none. No factor
+  means: the later charge controller falls back to the sun-position-relative fallback, never to
+  guessed numbers.
+* **Data — all on disk, nothing only in memory** (a restart must not cost the history):
+  `logs/pv_forecast_today.json` is continuously overwritten (a restart continues the day),
+  `logs/pv_forecast.csv` gets **one row per completed day**: forecast (total **and** in
+  four day sections), both measured values (AC and array side), both factors,
+  house/car/battery energy, SOC range, `samples` — and the rule columns `best30_kwh` (reference),
+  `best30_threshold_kwh`, `best30_pct`, `rule_best_says` (rule B) and `rule_margin_says` (rule A).
+  Plus `logs/pv_days_seed.csv` with the **22 day values from the PV portal export**, so that the
+  30-day reference exists immediately after a restart (currently the best value **33.498 kWh** from
+  06.09).
+  **Since 25.09 the garage meter is also in the row** (`sdm_import_kwh`, `sdm_export_kwh`
+  and the day difference `sdm_import_day_kwh`/`sdm_export_day_kwh`) — that is the owner's
+  reference for the car. Reason: on **23.09 19.38 kWh went into the car**, while the service was not yet
+  running; the day record books `car_kwh 0.0` there. Carrying the meter along in the same row
+  makes such gaps visible instead of finding them by hand weeks later (sum 22.–25.09:
+  **29.22 kWh** at the meter against 7.63 kWh in the app count). The day difference arises from the
+  last completion; on the first day it stays empty instead of guessed.
+* **`samples` is important:** the day values are a zero-order-hold reading, they inherit the
+  inverter's read cadence (with car every ~5 s, without car deliberately throttled — the
+  rule "no additional poll traffic" also applies here). With stale measured values
+  the charge controller integrates **nothing** (stale gate), instead of continuing to count old values.
+* **Production now comes from the inverter meter, not from an integral**
+  (2026-09-23): SunSpec model 101 `WH` (word 22/23, scale factor at 24) lies **within
+  the window that is read anyway** — so costs **zero** additional Modbus traffic (a test pins: there
+  remain three read operations with 103 registers) — and is exact: it loses nothing while the
+  service is up, and it counts the later **battery discharge along** (that is the number that the
+  monitoring app calls "production", and it is fair: what the
+  inverter delivered is counted once). Proven live: over the same 3.5 minutes the meter rose by
+  **0.0200 kWh** and the app's AC integral by **0.0200 kWh** — identical. Lifetime reading
+  23.09: **29,267.336 kWh** (scale factor 0).
+* **Caution when comparing after a restart:** the integral is **continued** from the day file,
+  the meter start point only if the day file has one — directly after
+  a restart the two numbers can therefore cover **different windows**. Comparing
+  means: **deltas over the same window**, never the totals (the first look therefore showed
+  0.100 against 0.032 kWh and was not an error). A start point that was not set at midnight
+  is marked in the row as `se_partial`.
+* **Rule B is built — as a display with history** (2026-09-24): the forecast is set against the
+  **best complete day of the last 30**, threshold **90 %**; above it "car priority",
+  below it "battery priority". The reference comes from the plant's own measurement series, so that it grows with the
+  season (June ~52 kWh, September ~33.5 kWh). Both rules are **recorded daily
+  along**, the history later decides which was right. In the UI both are shown:
+  "forecast vs best day (30d)" and "rule B (season) would say". **It still controls nothing** —
+  the controller pin is unchanged green.
+* **Open (control, waiting for the collected days):** only wire it up when the history
+  confirms the rule. The estimated quantities of rule A (`house_reserve_kwh`, margin 1.3) remain
+  placeholders and will presumably not be needed for rule B.
 
-## Zuletzt behoben (02.10.2026)
+## Recently fixed (2026-10-03)
 
-**Neue ZHA-Steckdose „Fliegengrill" — misst, schaltet, hängt an Taster und Nacht-Automatik.**
+**The buttons in the "Mode & settings" card seemed sluggish to respond — it was the display,
+not the switching.**
 
-* **Die Dose selbst ist verifiziert.** Tuya `_TZ3000_gjnozsaz` / **TS011F**, IEEE
-  `a4:c1:38:02:08:5c:ff:ff`, `device_id d5a254ad4af3f63eaf15f456ff1db999`. Mit dem Wasserkocher
-  als Last gemessen: **1971,0 W / 8,547 A** und **Spannung 237 → 228 V** im Moment des
-  Einschaltens (der Einschaltstrom zieht die Leitung runter). Sie rechnet richtig. Die damit
-  verbundene Frage ist damit beantwortet: **die Dose meldet kleine Last korrekt**, unterhalb
-  ihrer Meldeschwelle kann ein Fliegengrill (2–8 W) aber bei 0,0 W stehen bleiben — für „läuft
-  er?" ist der **Schalterzustand** die verlässliche Anzeige, nicht die Leistung.
-* **Umbenannt und einsortiert** (`config/device_registry/update`, zurückgelesen):
-  Gerät **„Fliegengrill"**, Bereich **`wohnzimmer`** (dorthin, wo „Steckdose Kühlschrank" liegt).
-  Die 13 Entitäten heißen jetzt „Fliegengrill Leistung / Spannung / Stromstärke / Summe
-  verbraucht / Kindersicherung". Die **technischen entity_ids bleiben generisch**
-  (`switch.tz3000_gjnozsaz_ts011f_11`) — bewusst: eine Umbenennung der IDs ist ein brechender
-  Eingriff, der Name am Gerät ist das, was das UI zeigt.
-* **Der Taster: IEEE `a4:c1:38:4b:8a:95:40:dc`** — ein HOBEIAN `ZG-101ZL`, der seit **370 Tagen**
-  als tot geführt war und nach dem Neu-Anlernen wieder sendet (`avail=True`, LQI 172,
-  Batterie 100 %). Er hing schon im Netz (`zha/devices` blieb bei 64 Geräten) — ZHA hat ihn
-  anhand der IEEE an seinen **bestehenden** Eintrag gehängt. Umbenannt auf
-  **„Button Fliegengrill"**, Bereich `wohnzimmer`. **Physische Kennzeichnung: „05"** — der Besitzer
-  nennt ihn so; bis heute hatte der Taster keine Funktion, jetzt schaltet er den Fliegengrill.
-* **Die Falle, die viel Zeit gekostet hätte:** Das Taster-Gerät stand auf **`disabled_by: user`**,
-  und deshalb hatten alle sieben Entitäten `disabled_by: device` — sie antworten mit **HTTP 404**
-  und sind im UI unsichtbar. Die Automation lief trotzdem, weil **ZHA `zha_event` auch für
-  deaktivierte Geräte verarbeitet**. Reparatur ist das **Gerät** freischalten (`disabled_by: null`),
-  nicht die Entitäten: ein Durchlauf über die Entitäten fand „nichts zu tun", und ~25 s später
-  waren die Werte da. Merke: `disabled_by` am **Gerät** lesen, bevor man Entitäten anfasst.
-* **Drei Automationen, alle `state=on`:**
+* **Measured:** the web server responds in **~0.8 ms** (`/api/state` 5.9 KB, five measurements
+  0.77–0.93 ms), the browser sees **2–3 ms** per request. The click itself therefore never arrived too
+  late — the log shows the writes of the last days to the second.
+* **The core:** `state["mode"]` and `state["control_enabled"]` were **only set in the cycle**
+  (`cycle()`, `main.py` line 501/502). `update_settings()` wrote only
+  `state["settings"]`. But the button reads exactly the two *other* fields:
+  mode badge, highlighted mode button and the label "Enable/Disable control"
+  (and DRY RUN) — the input fields next to them read `state["settings"]` and were immediately
+  correct. Consequence: a click looked like nothing for up to **one cycle**.
+* **The number for it:** the loop runs with `interval_s: 30`, measured **32.2 s** between two
+  cycles (`cycles`/`last_cycle` read along over 40 s) — plus up to 3 s page poll. So
+  **on average ~16 s, in the worst case ~33 s**, until the button responded. Exactly this
+  pattern is also in the log: the same mode twice within seconds
+  (26.09 11:58:06 and 11:58:13 `manual`; 03.10 14:59:59 and 15:00:05 `cheap_hours`).
+* **Fix (2 lines, `update_settings`):** `state["mode"]` and `state["control_enabled"]`
+  are now set **also** on change. `cycle()` still writes them every cycle
+  — so there are not two truths, only one that is earlier. Proven offline (service with
+  stub drivers, real `update_settings`/`cycle`): before, `mode` after the click was `pv` and
+  only in the next cycle `manual`, now immediately `manual`.
+* **Pinned** in `tests/test_service_smoke.py` ("a settings change is visible in the state
+  snapshot at once"): mode and control flag are directly in the snapshot, `settings`
+  matches, an unknown mode is still rejected and leaves nothing behind.
+  All **13 suites green** (511 → 516 checks).
+* **Not yet live:** the running service is from 30.09 — the two lines take effect only
+  after `systemctl --user restart evcharge-wt.service`. A restart resets, as always, the
+  day bases (SE meter, garage PV) as a "partial day" and the go-e session counter to 0;
+  the car is currently connected with `complete`, no charging is running.
+* **Lesson:** when a button seems "sluggish", first measure the server (milliseconds against
+  seconds) and then ask **which** field the display reads. The state was never old,
+  only the copy of it.
+
+**And the second reason why a field "jumps back" (same day): the page overwrote it
+itself.**
+
+* **Observation by the owner:** "wenn ich etwas, z. B. 1 in das Feld plan kwh schreibe,
+  dann wird es beim nächsten update zyklus auf 0 zurückgesetzt." (when I write something, e.g. 1 into the field plan kwh, then it is reset to 0 on the next update cycle.)
+* **Reproduced, and the server was uninvolved:** the 3-second refresh wrote
+  **every** settings field unconditionally anew from `state["settings"]`. A typed `1` was
+  back to `0` after **4 s** (measurement on the real page), `config.json` stood at `0.0` the whole
+  time — so nothing was ever saved and nothing discarded, only the
+  display overwritten. The same pattern would have happened to every field.
+* **Fix in JavaScript (`UI_HTML`):** the fields are now filled only when they are **not**
+  currently being edited (`document.activeElement`) and **not** marked as `dirty`.
+  The first keystroke sets the mark, a submitted save clears it
+  (`clearDirtySettings()`) — afterwards the fields follow the server again, a rejected
+  value therefore visibly jumps back to the real state instead of looking "saved".
+  Untouched fields continue to be tracked.
+* **First checked offline, then rolled out:** a small server in `/tmp` serves the
+  **real** `UI_HTML` against a dummy of `/api/state` + `/api/settings`. With that:
+  a typed `1` survives **three polls**; an untouched field still follows an external
+  writer (`min_current` 6 → 9); after save, `1` is in the display **and** in the server.
+  Then restart (16:46:52) and the same check repeated **live**: a typed `1` after
+  **9 s / 3 polls** still there, `plan_energy_kwh` on the server unchanged `0` — nothing
+  saved, nothing touched on the plant. Three source pins in
+  `tests/test_service_smoke.py` (13 suites green).
+* **`plan kWh` / `plan by` were removed from the code on 2026-10-03 at his request**
+  ("ich brauche das nicht" [I do not need that]). Gone are: the fields `plan_energy_kwh`/`plan_deadline` in
+  `Settings`, the decision fields `planned_kwh`/`plan_active`/`plan_wait`, the plan branch in
+  `decide()` including `_plan_required_w`/`_plan_start_in_s`, the `session_kwh` argument of
+  `decide()` (only the plan ever used it), the two input fields and the plan text in the
+  countdown of the page, the HA number entity "EV charge plan energy" and the
+  `set/plan_deadline` command in the MQTT client, the add-on options and the schema in
+  `config.yaml`, the two keys in `config.json`/`config.example.json`, the README line
+  and the old local `local-tools/mqtt-via-ha-rest` twin.
+  **Reason (measured, before):** the branch was reachable only in `pv`, `minpv` and
+  `cheap_hours` outside the cheap-tariff window — in `now`, `off`, `manual`, without car and in the
+  cheap-tariff window the earlier `return` silenced it. And while it was waiting for a distant target, it
+  **suppressed a good solar surplus**: 3000 W export, mode `pv`,
+  without plan **13 A**, with plan **0 A**.
+* **The removal is behaviour-neutral — proven, not claimed.** A/B against the old version
+  from `git` (HEAD) with the **live-set** values (`plan_energy_kwh` 0, `plan_deadline` empty):
+  **1152 scenarios** (six modes × time of day × grid power × SOC × plugged in/charging) with
+  **0 differences** in `charge`, `target_current`, `surplus_w`, `blocked_by`, the
+  grace counters, `manual`, `cheap_now` and `phases` — and **576/576 identical
+  justification texts** (after normalisation of the separate wording change that was already
+  uncommitted in the tree before).
+* **Pinned so it does not come back:** `tests/test_controller.py` checks that `Settings` and
+  `Decision` no longer have a plan field, that the word "plan" no longer occurs in the controller
+  module (word-boundary-aware, so that `plant`/`plant_now` do not trigger) and that `decide()` no
+  longer accepts `session_kwh`; `test_service_smoke.py` checks the page (no `set_plan` fields,
+  no "plan:" in the countdown, no plan keys in the add-on options); `test_mqtt_loopback.py`
+  checks that no plan entity and no plan command is left in the MQTT client. 13 suites green.
+* **HA side — also tidied up:** Discovery messages are **retained** in the broker, so a
+  removed entity stays in Home Assistant. Checked and fixed: the topic
+  `homeassistant/number/evcharge_wt/plan_energy_kwh/config` was still there (18 Discovery topics),
+  deleted with an **empty retained message** → **17 topics**, the plan no longer appears in any
+  message, and HA no longer holds `number.ev_charger_wt_charge_plan_energy`
+  (HTTP 404 instead of previously `state 0.0`). Checked beforehand: **no** reference to it in
+  `entity_references.json` (zero hits on `evcharge` in any board or automation).
+  New tool for this: `tools/mqtt_retained_audit.py` (lists the retained Discovery topics
+  of this service; `--clear <topic>` deletes one — without emitting any credentials).
+
+## Recently fixed (2026-10-02)
+
+**New ZHA socket "Fliegengrill" — measures, switches, hangs on button and night automation.**
+
+* **The socket itself is verified.** Tuya `_TZ3000_gjnozsaz` / **TS011F**, IEEE
+  `a4:c1:38:02:08:5c:ff:ff`, `device_id d5a254ad4af3f63eaf15f456ff1db999`. Measured with the kettle
+  as load: **1971.0 W / 8.547 A** and **voltage 237 → 228 V** at the moment of
+  switching on (the inrush current pulls the line down). It calculates correctly. The question
+  connected with this is thereby answered: **the socket reports small load correctly**, below
+  its reporting threshold, however, a Fliegengrill (2–8 W) can remain at 0.0 W — for "is it
+  running?" the **switch state** is the reliable indication, not the power.
+* **Renamed and filed** (`config/device_registry/update`, read back):
+  device **"Fliegengrill"**, area **`wohnzimmer`** (to where "Steckdose Kühlschrank" sits).
+  The 13 entities are now called "Fliegengrill Leistung / Spannung / Stromstärke / Summe
+  verbraucht / Kindersicherung". The **technical entity_ids remain generic**
+  (`switch.tz3000_gjnozsaz_ts011f_11`) — deliberately: renaming the IDs is a breaking
+  intervention, the name on the device is what the UI shows.
+* **The button: IEEE `a4:c1:38:4b:8a:95:40:dc`** — a HOBEIAN `ZG-101ZL`, which had been listed
+  as dead for **370 days** and transmits again after re-pairing (`avail=True`, LQI 172,
+  battery 100 %). It was already on the network (`zha/devices` stayed at 64 devices) — ZHA attached
+  it to its **existing** entry based on the IEEE. Renamed to
+  **"Button Fliegengrill"**, area `wohnzimmer`. **Physical marking: "05"** — the owner
+  calls it that; until today the button had no function, now it switches the Fliegengrill.
+* **The trap that would have cost a lot of time:** The button device was set to **`disabled_by: user`**,
+  and therefore all seven entities had `disabled_by: device` — they respond with **HTTP 404**
+  and are invisible in the UI. The automation ran anyway, because **ZHA processes `zha_event` even for
+  disabled devices**. The repair is to enable the **device** (`disabled_by: null`),
+  not the entities: a pass over the entities found "nothing to do", and ~25 s later
+  the values were there. Note: read `disabled_by` on the **device** before touching entities.
+* **Three automations, all `state=on`:**
   * `fliegengrill_an` — 00:00 → `switch.turn_on`
   * `fliegengrill_aus` — 05:00 → `switch.turn_off`
-  * `fliegengrill_taster` — `zha_event` mit **Filter im Trigger** (`event_data.device_ieee`),
-    Bedingung `command == 'toggle'`, Aktion `switch.toggle`, `mode: single`
-  Beide Zeit-Automationen tragen die Bedingung
-  `{{ now().month >= 4 and now().month <= 11 }}` (April–November). **HA läuft auf
-  `Europe/Berlin`** — 00:00/05:00 sind Hauszeit, nicht Serverzeit. „Von 0 bis 5" ist die
-  Vorgabe des Besitzers (Fliegengrill in der Nacht).
-* **End-to-End bewiesen, nicht behauptet:** ein künstliches Ereignis über
-  `POST /api/events/zha_event` schaltete die Dose (`last_triggered` gesetzt), und danach hat der
-  **echte** Taster **sieben Mal** hintereinander umgeschaltet (17:52:44 … 17:54:17) — jede
-  Bewegung sitzt. Erst damit ist der Funkweg belegt und nicht nur die Automatik.
-* **Falle beim Rücklesen der Automation:** HA nennt die Felder im Config-View **plural**
-  (`triggers` / `conditions` / `actions`), nicht `trigger`/`condition`/`action`. Ein Rücklesen mit
-  den Singular-Schlüsseln zeigt `None` für einen völlig korrekten Eintrag — das sah nach einem
-  fehlgeschlagenen Schreibvorgang aus und war keiner.
-* **Nebenbefund:** Der Wasserkocher fiel um 17:47:19 von 1964 W auf 0,0 W zurück, die Spannung
-  auf 237 V. Und `zha_event` meldet für die **Eingangstür** (`00:15:8d:00:8b:bb:3c:8c`) um
-  17:55:18/17:55:25 `attribute_updated` — sie lebt also weiter.
+  * `fliegengrill_taster` — `zha_event` with **filter in the trigger** (`event_data.device_ieee`),
+    condition `command == 'toggle'`, action `switch.toggle`, `mode: single`
+  Both time automations carry the condition
+  `{{ now().month >= 4 and now().month <= 11 }}` (April–November). **HA runs on
+  `Europe/Berlin`** — 00:00/05:00 are house time, not server time. "Von 0 bis 5" (from 0 to 5) is the
+  owner's specification (Fliegengrill at night).
+* **Proven end-to-end, not claimed:** an artificial event via
+  `POST /api/events/zha_event` switched the socket (`last_triggered` set), and afterwards the
+  **real** button switched **seven times** in a row (17:52:44 … 17:54:17) — every
+  movement registers. Only with this is the radio path evidenced, not just the automation.
+* **Trap when reading back the automation:** HA names the fields in the config view in the **plural**
+  (`triggers` / `conditions` / `actions`), not `trigger`/`condition`/`action`. A read-back with
+  the singular keys shows `None` for a completely correct entry — that looked like a
+  failed write and was not one.
+* **Side finding:** The kettle dropped at 17:47:19 from 1964 W back to 0.0 W, the voltage
+  to 237 V. And `zha_event` reports for the **Eingangstür** (`00:15:8d:00:8b:bb:3c:8c`) at
+  17:55:18/17:55:25 `attribute_updated` — so it lives on.
 
-## Zuletzt behoben (25.09.2026)
+## Recently fixed (2026-09-25)
 
-* **Batterie-Runde: vier Geräte zurück, und eine Fehldeutung korrigiert.** Treppe Keller, Erstes
-  Geschoss Treppe, TreppeEG Rechts und Button Altar kamen nach Zellwechsel von selbst zurück.
-  **Button Mascha PC** zusätzlich nach **Neuanlernen in ZHA** — die Entität
-  `switch.hobeian_zg_101zl_4` bleibt dabei unverändert (ZHA hängt anhand der IEEE-Adresse an das
-  bestehende Gerät: kein `_5`, keine Leiche, Automationen bleiben gültig). Ein Tastendruck allein
-  weckt ein Gerät ohne Netzanmeldung nicht, egal wie oft. Fünfter Taster derselben Bauart und
-  intakt: `switch.button_pc_wt` („Button PC WT", schaltet den PC ab, Batterie meldet frisch).
-* **„stumm seit 19.09." war eine Fehldeutung.** Das ist nur der Zeitstempel, den HA beim Neustart
-  auf die Entitäten schreibt. Der **letzte echte Kontakt** steht geräteweise in ZHA (`zha/devices`
-  → `last_seen`, `lqi`, `available`): alle noch stummen Batteriegeräte hatten zuletzt vor **88 bis
-  369 Tagen** gesendet — **kein** Gerät ist am 19.09. ausgefallen. Triage-Regel daraus: unter ~8
-  Tagen = echter Kandidat für eine Zelle, Monate/Jahre = Karteileiche (Ersatz, abgebaut) — da hilft
-  keine Batterie.
-* **Drei Karteileichen deaktiviert** (namenlose ZG-101ZL `…a2:81:f4` und `…95:40:dc` sowie das
-  namenlose `_TZ3000_zutizvyk TS0203`) über `config/device_registry/update` mit `disabled_by: user`
-  — reversibel mit `null`. Beleg: Entitäten in HA **605 → 590**, Rücklesen `disabled_by=user`. Der
-  Stumm-Alarm nennt sie nicht mehr: er hat keine fest verdrahteten Namen, sondern scannt dynamisch,
-  und deaktivierte Entitäten verlassen die Zustandsmaschine. **WasserSensor Heizung** (88 d) ist am
-  selben Abend nach Zellwechsel **von selbst** wieder eingebucht (100 %, LQI 148) — es braucht also
-  nicht immer ein Neuanlernen; **Eingangstür** (121 d) bleibt absichtlich stehen (angeblich in
-  Betrieb, Zuordnung noch offen: es gibt daneben den lebenden Zwilling `AqaraSensorSZTür` — dessen
-  Öffnungs-Entität steht dauerhaft auf **offen**, weil die Schlafzimmertür praktisch immer gekippt
-  ist; das ist korrekt und **kein** Defekt, Temperatur und Batterie melden frisch). Neu
-  aufgefallen und **aufgeklärt am 26.09. — siehe den Eintrag zu Ralfs TRV weiter unten** (still seit
-  20.02.2026, 217 Tage, keine `climate`-Entität mehr).
-* **EINGANGSTÜR-SENSOR WIEDER IN BETRIEB (28.09., 17:47) — nach 124 Tagen Funkstille.**
-  Letzte Meldung war der 27.05.2026. Verlauf, in dieser Reihenfolge gemessen:
-  * **Zelle gewechselt + Knopf gedrückt** → Gerät kam um **17:31:23** zurück: `available: True`,
-    LQI 136, Batterie 69,5 %, Temperatur 31 °C. **Es sendete danach aber nichts mehr.**
-  * **Zwei Auf-Zu-Zyklen und ein direkt angelegter Magnet** → **kein einziger Funkspruch**,
-    `last_seen` blieb auf 17:31:23 stehen. Die LED leuchtete — sie beweist nur lokalen Strom.
-    Damit waren **Montageabstand und Zellenpolarität ausgeschlossen** (bei falscher Polung wäre
-    er gar nicht gekommen).
-  * **Gelöscht + neu angelernt (17:44:19 → 17:45:23) → voll funktionsfähig:**
+* **Battery round: four devices back, and one misinterpretation corrected.** Treppe Keller, Erstes
+  Geschoss Treppe, TreppeEG Rechts and Button Altar came back by themselves after a cell change.
+  **Button Mascha PC** additionally after **re-pairing in ZHA** — the entity
+  `switch.hobeian_zg_101zl_4` stays unchanged in the process (ZHA attaches to the
+  existing device based on the IEEE address: no `_5`, no dead entry, automations stay valid). A single press of the button
+  does not wake a device without network registration, no matter how often. Fifth button of the same type and
+  intact: `switch.button_pc_wt` ("Button PC WT", switches the PC off, battery reports freshly).
+* **"stumm seit 19.09." (silent since 19.09.) was a misinterpretation.** That is only the timestamp that HA writes
+  onto the entities on restart. The **last real contact** is in ZHA per device (`zha/devices`
+  → `last_seen`, `lqi`, `available`): all still-silent battery devices had last sent **88 to
+  369 days** ago — **no** device failed on 19.09. Triage rule from this: under ~8
+  days = real candidate for a cell, months/years = dead entry (replacement, dismantled) — no
+  battery helps there.
+* **Three dead entries disabled** (nameless ZG-101ZL `…a2:81:f4` and `…95:40:dc` as well as the
+  nameless `_TZ3000_zutizvyk TS0203`) via `config/device_registry/update` with `disabled_by: user`
+  — reversible with `null`. Evidence: entities in HA **605 → 590**, read-back `disabled_by=user`. The
+  silence alarm no longer names them: it has no hard-wired names but scans dynamically,
+  and disabled entities leave the state machine. **WasserSensor Heizung** (88 d) re-registered
+  the same evening after a cell change **by itself** (100 %, LQI 148) — so a re-pairing is not always
+  needed; **Eingangstür** (121 d) deliberately stays (supposedly in
+  operation, assignment still open: next to it there is the living twin `AqaraSensorSZTür` — its
+  opening entity permanently reads **offen**, because the bedroom door is practically always tilted
+  open; that is correct and **not** a defect, temperature and battery report freshly). Newly
+  noticed and **clarified on 26.09. — see the entry on Ralf's TRV further below** (silent since
+  20.02.2026, 217 days, no `climate` entity any more).
+* **EINGANGSTÜR SENSOR BACK IN OPERATION (28.09., 17:47) — after 124 days of radio silence.**
+  Last message was 27.05.2026. Sequence, measured in this order:
+  * **Cell changed + button pressed** → device came back at **17:31:23**: `available: True`,
+    LQI 136, battery 69.5 %, temperature 31 °C. **It then sent nothing more.**
+  * **Two open-close cycles and a directly applied magnet** → **not a single radio message**,
+    `last_seen` stayed at 17:31:23. The LED lit up — it only proves local current.
+    This **ruled out mounting distance and cell polarity** (with wrong polarity it would
+    not have come back at all).
+  * **Deleted + re-paired (17:44:19 → 17:45:23) → fully functional:**
     ```
     15:47:25  binary_sensor.door_offnung -> on    (ZHA last_seen 17:47:22, lqi 144)
     15:47:29  binary_sensor.door_offnung -> off   (ZHA last_seen 17:47:25, lqi 132)
     ```
-  * **Die Zelle war die ganze Zeit in Ordnung** — der naheliegende Verdacht war falsch.
-  * **Registry unverändert:** Geräte-ID `1b4cd99bc3c312b75088e774d5c5bc22`, Name „Eingangstür",
-    Bereich `eingang`, alle vier Entitäts-IDs identisch (ZHA schlüsselt über die IEEE). Das Board
-    „Fenster/Türen" brauchte **keine** Anpassung — die vorherige Warnung war unbegründet.
-  * **Merke (wichtig):** Ein frisch verbundenes Gerät kann **halbfertig gekoppelt** sein —
-    erreichbar, guter LQI, ein Satz plausibler Werte, danach Stille. Von außen unsichtbar.
-    Nach jedem Anlernen **ein echtes Ereignis auslösen** und eine **neue** `last_seen` *plus* einen
-    Zustandswechsel in der Historie verlangen. „Es hat beim Anlernen gemeldet" ist der Fehlerfall,
-    nicht der Beweis.
-  * **Werkzeuge** (lokal, gitignored): `local-tools/zha_device_health.py` (Gerätebestand, Tote gegen
-    Lebende kalibriert) und `local-tools/door_join_watch.py` (Mithörer, 4-s-Takt, nur Änderungen).
-  * **`zha.permit` kann max. 254 s**; ein `504 Gateway Timeout` heißt **nicht**, dass das Fenster zu
-    ist. `last_seen` kommt als ISO-String, nicht als Zahl.
-  * **Weiterhin tot (Dauerzustand):** HOBEIAN ZG-101ZL (370 d), `_TZ3000_zutizvyk TS0203` (372 d),
+  * **The cell was fine all along** — the obvious suspicion was wrong.
+  * **Registry unchanged:** device ID `1b4cd99bc3c312b75088e774d5c5bc22`, name "Eingangstür",
+    area `eingang`, all four entity IDs identical (ZHA keys via the IEEE). The board
+    "Fenster/Türen" needed **no** adjustment — the previous warning was unfounded.
+  * **Note (important):** A freshly connected device can be **half-finished paired** —
+    reachable, good LQI, a set of plausible values, then silence. Invisible from outside.
+    After every pairing **trigger a real event** and demand a **new** `last_seen` *plus* a
+    state change in the history. "It reported during pairing" is the failure case,
+    not the proof.
+  * **Tools** (local, gitignored): `local-tools/zha_device_health.py` (device inventory, dead calibrated against
+    living) and `local-tools/door_join_watch.py` (listener, 4-s cadence, changes only).
+  * **`zha.permit` can last max. 254 s**; a `504 Gateway Timeout` does **not** mean that the window is
+    closed. `last_seen` comes as an ISO string, not as a number.
+  * **Still dead (permanent state):** HOBEIAN ZG-101ZL (370 d), `_TZ3000_zutizvyk TS0203` (372 d),
     ElektroHeizungKeller (150 d), Leuchte Ecke Wohnzimmer (80 d).
-* **Zwei Wassersensoren haben jetzt einen fetten Telegram-Alarm** (HA-nativ, gleicher Bot und
-  gleiche Gruppe wie die Batterie-Alarme): `wasser_leck_heizung` (`binary_sensor.wassersensor_heizung`,
-  HOBEIAN ZG-222Z) und `wasser_leck_waschmaschine` (`binary_sensor.tz3000_upgcbody_snzb_05`), dazu
-  `wasser_entwarnung` für beide. Verhalten: sofort bei Nässe (5 s entprellt), danach **alle 5
-  Minuten erneut, solange nass** (max. 24 Runden = 2 h), und eine Entwarnung beim Trockenwerden —
-  letztere nur nach echter Nässe (`trigger.from_state == 'on'`), nicht beim HA-Neustart.
-  Beleg: Testauslösung 17:58:34 UTC (Heizung) und 18:01:54 UTC (Waschmaschine) — beide Male
-  wanderte der Zeitstempel der Gruppen-Notify-Entität eine Sekunde später mit.
-  **Pitfall:** `automation.trigger` **wartet** auf das Ende der Automation — eine mehrstündige
-  Automation läuft damit in den Timeout der HTTP-Anfrage. Erfolg deshalb über `last_triggered`
-  und den Zeitstempel der Notify-Entität prüfen, nicht am Rückgabewert der Auslösung.
-  **Werkzeuge** (lokal, gitignored): `local-tools/wasser_alarm_bauen.py` legt die drei Automationen
-  an bzw. ändert sie (idempotent), `local-tools/wasser_alarm_zeigen.py` rendert die gespeicherten
-  Texte zur Kontrolle. Beide lesen den Token aus `~/.hermes/.env` und enthalten keine Geheimnisse.
-* **Aqara-Inventur (19 Geräte)** — 9 `lumi.weather` (Klima) und 10 `lumi.sensor_magnet.aq2`
-  (Tür/Fenster); 18 leben, gemeldet innerhalb 8–47 min, Zähler gesund. **Der einzige Tote bleibt
-  `Eingangstür`** (121 d, Zelle bestellt). Zwei Befunde mit Handlungsbedarf:
-  * **`ToiletteTemp` und `TempSensorBad` haben keine Batterie-Entität** — ZHA kennt bei ihnen
-    Hersteller/Modell nicht (ihre übrigen Entitäten heißen `sensor.unk_manufacturer_unk_model_*`),
-    deshalb wurde nie eine Batterie angelegt. **Der Batterie-Alarm kann sie nicht sehen**, ihre
-    Zellen könnten unbemerkt sterben. **Korrektur (25.09.):** der zuerst empfohlene Weg „in ZHA
-    erneut interviewen" existiert **nicht** — die ZHA-Websocket-API kennt nur
-    `zha/devices/reconfigure`, und 16 Aufrufe über fünf Minuten bei nachweislich wachem Gerät
-    (deren `last_seen` und Werte während der Aktion vorrückten) haben den Hersteller nicht geändert.
-    Hersteller und Modell kommen aus dem Node Descriptor, den ZHA **beim Koppeln** liest. Wirklicher
-    Weg: **entfernen + neu koppeln** — belegt am eigenen Haus, denn `Fenster Sensor Toilette` trägt
-    dieselben Leichen und daneben richtige Entitäten. Preis: neue Entitäts-Suffixe und Leichen;
-    vorher prüfen, was darauf verweist. **Noch offen.**
-  * **Referenzprüfung vor dem Neukoppeln (25.09.): null Treffer.** Scan über alle Automationen,
-    Szenen, Zustandsattribute und **alle 12 Lovelace-Boards** (Standard, Karte, Lampe, Mein Zuhause,
-    Treppe-Alarm, Meine Energie, Garage SDM 360, Fenster/Türen, Klima, Heizung, CO2, Strom) — keine
-    einzige der 12 Entitäten (und keine der beiden device_ids) wird irgendwo referenziert. Das
-    Neukoppeln kann also nichts brechen. **YAML-Konfiguration ist per API nicht lesbar** (Template-
-    Sensoren, Skripte, recorder-Ausschlüsse) — dort ist nicht geprüft.
-  * **Alte IDs sind festgehalten**, damit nach dem Neukoppeln zugeordnet werden kann:
-    `local-tools/ids_vor_neukoppeln.json` (gitignored). Suchende Begriffe: IEEE
-    `00:15:8d:00:8b:ba:8c:27` (ToiletteTemp, device_id `a844a6db54c28aff22aa2a0677e72e21`) und
+* **Two water sensors now have a fat Telegram alarm** (HA-native, same bot and
+  same group as the battery alarms): `wasser_leck_heizung` (`binary_sensor.wassersensor_heizung`,
+  HOBEIAN ZG-222Z) and `wasser_leck_waschmaschine` (`binary_sensor.tz3000_upgcbody_snzb_05`), plus
+  `wasser_entwarnung` for both. Behaviour: immediately on wetness (5 s debounced), then **every 5
+  minutes again, as long as wet** (max. 24 rounds = 2 h), and an all-clear when it dries out —
+  the latter only after real wetness (`trigger.from_state == 'on'`), not on HA restart.
+  Evidence: test trigger 17:58:34 UTC (heating) and 18:01:54 UTC (washing machine) — both times
+  the timestamp of the group notify entity moved along one second later.
+  **Pitfall:** `automation.trigger` **waits** for the end of the automation — a multi-hour
+  automation thus runs into the timeout of the HTTP request. Check success therefore via `last_triggered`
+  and the timestamp of the notify entity, not on the return value of the trigger.
+  **Tools** (local, gitignored): `local-tools/wasser_alarm_bauen.py` creates or changes the three automations
+  (idempotent), `local-tools/wasser_alarm_zeigen.py` renders the stored
+  texts for checking. Both read the token from `~/.hermes/.env` and contain no secrets.
+* **Aqara inventory (19 devices)** — 9 `lumi.weather` (climate) and 10 `lumi.sensor_magnet.aq2`
+  (door/window); 18 alive, reported within 8–47 min, counters healthy. **The only dead one remains
+  `Eingangstür`** (121 d, cell ordered). Two findings requiring action:
+  * **`ToiletteTemp` and `TempSensorBad` have no battery entity** — ZHA does not know their
+    manufacturer/model (their remaining entities are called `sensor.unk_manufacturer_unk_model_*`),
+    therefore a battery was never created. **The battery alarm cannot see them**, their
+    cells could die unnoticed. **Correction (25.09.):** the path first recommended, "in ZHA
+    erneut interviewen" (interview again in ZHA), **does not exist** — the ZHA websocket API only knows
+    `zha/devices/reconfigure`, and 16 calls over five minutes with a demonstrably awake device
+    (whose `last_seen` and values advanced during the action) did not change the manufacturer.
+    Manufacturer and model come from the Node Descriptor, which ZHA reads **when pairing**. The real
+    path: **remove + re-pair** — evidenced in this own house, because `Fenster Sensor Toilette` carries
+    the same dead entries and next to them correct entities. Price: new entity suffixes and dead entries;
+    check beforehand what refers to it. **Still open.**
+  * **Reference check before the re-pairing (25.09.): zero hits.** Scan across all automations,
+    scenes, state attributes and **all 12 Lovelace boards** (Standard, Karte, Lampe, Mein Zuhause,
+    Treppe-Alarm, Meine Energie, Garage SDM 360, Fenster/Türen, Klima, Heizung, CO2, Strom) — not a
+    single one of the 12 entities (and neither of the two device_ids) is referenced anywhere. The
+    re-pairing therefore cannot break anything. **YAML configuration is not readable via API** (template
+    sensors, scripts, recorder exclusions) — that is not checked.
+  * **Old IDs are recorded**, so that they can be assigned after the re-pairing:
+    `local-tools/ids_vor_neukoppeln.json` (gitignored). Search terms: IEEE
+    `00:15:8d:00:8b:ba:8c:27` (ToiletteTemp, device_id `a844a6db54c28aff22aa2a0677e72e21`) and
     `00:15:8d:00:8b:bd:8d:86` (TempSensorBad, device_id `c88b0d9a758cd7121af2fde02a3b5c8b`);
-    Entitäten `sensor.toilettetemp_{temperatur,luftfeuchtigkeit,druck}`,
-    `sensor.tempsensorbad_{temperatur,luftfeuchtigkeit,druck}`, beider `…_identifizieren` plus die
-    `unk_manufacturer_unk_model_{rssi,lqi}`-Leichen. **Die alten Entitäten werden NICHT gelöscht** —
-    so bleiben Historie und Langzeitstatistik der beiden Sensoren erhalten.
-  * **Neukoppeln beider Sensoren erfolgreich (25.09. abends).** Beide haben jetzt Hersteller `LUMI`
-    und je eine **Batterie-Entität**: `sensor.toilette_toilettetemp_batterie` = **55,5 %** (numerisch,
-    damit zählt der Batterie-Alarm sie mit) und `sensor.bad_tempsensorbad_batterie` noch `unknown`
-    (füllt sich beim nächsten Bericht). **Die Mess-Entitäten behielten ihre IDs**
-    (`sensor.{toilettetemp,tempsensorbad}_{temperatur,luftfeuchtigkeit,druck}`) — der Recorder hängt
-    an der ID, also laufen **Historie und Langzeitstatistik ohne Bruch weiter**; nur die neuen
-    Batterie-Entitäten sind historienlos. Die Referenzprüfung vorher (null Treffer) hat sich damit
-    bestätigt: es war nichts zu reparieren. Vorher-Nachher-Zuordnung:
+    entities `sensor.toilettetemp_{temperatur,luftfeuchtigkeit,druck}`,
+    `sensor.tempsensorbad_{temperatur,luftfeuchtigkeit,druck}`, both `…_identifizieren` plus the
+    `unk_manufacturer_unk_model_{rssi,lqi}` dead entries. **The old entities are NOT deleted** —
+    so the history and long-term statistics of the two sensors remain.
+  * **Re-pairing of both sensors successful (25.09. evening).** Both now have manufacturer `LUMI`
+    and one **battery entity** each: `sensor.toilette_toilettetemp_batterie` = **55.5 %** (numeric,
+    so the battery alarm counts it) and `sensor.bad_tempsensorbad_batterie` still `unknown`
+    (fills on the next report). **The measurement entities kept their IDs**
+    (`sensor.{toilettetemp,tempsensorbad}_{temperatur,luftfeuchtigkeit,druck}`) — the recorder hangs
+    on the ID, so **history and long-term statistics continue without a break**; only the new
+    battery entities are history-less. The reference check beforehand (zero hits) was thereby
+    confirmed: there was nothing to repair. Before-after assignment:
     `local-tools/ids_vor_neukoppeln.json`.
-    Offen und rein kosmetisch: sieben `unk_manufacturer…`-Leichen, die krummen Batterie-IDs, und die
-    beiden Sensoren fehlen auf den handgepflegten Boards `Klima`/`Heizung`.
-  * **Diese drei Kosmetikpunkte sind noch am selben Abend erledigt:** Batterie-Entitäten umbenannt zu
-    `sensor.toilettetemp_batterie` (55,5 %) und `sensor.tempsensorbad_batterie` (noch `unknown`);
-    alle sieben `unk_manufacturer…`-Leichen `hidden_by: user` (die eine noch aktive zusätzlich
-    deaktiviert); auf `dashboard-klima` und `dashboard-heizung` je eine Karte **„Bad & Toilette"**
-    angehängt (Klima 2→3, Heizung 5→6 Karten, übriger Inhalt byteweise unverändert). **Beinahe-Fehler
-    dabei:** die neue Karte wurde vor dem Umbenennen gebaut und zeigte auf die alten Batterie-IDs —
-    aufgefallen beim Referenzcheck gegen `/api/states` (2 unbekannte Entitäten je Board), korrigiert,
-    danach 0 unbekannte Referenzen. Das Aussehen selbst ist nicht verifiziert (kein HA-Login).
-* **Fenster/Türen-Board erweitert (25.09.):** die Ansicht `fenster` des Boards `fenster-turen`
-  hat unten einen Bereich **„Batterien"** — Überschriftskarte mit `mdi:battery-40` plus die Liste
-  aller zehn Einheiten-Batterien, in **derselben Raumreihenfolge** wie die Öffnungsliste darüber.
-  Stil nach `treppe-alarm/0` (dort: heading „Batterien" + schlichte Entitätsliste). Alle zehn
-  Einheiten haben eine Batterie-Entität, `sensor.door_batterie` (Eingangstür) steht wie erwartet
-  auf `unavailable`, bis die CR1632 da ist. 20 Referenzen geprüft, **keine** unbekannt, übriger
-  Ansichtsinhalt byteweise unverändert. Nächste Zellen laut Stand: Keller Partyraum 66 %,
-  Toilette 69,5 %, Balkontür 73 %. **Ungeprüft:** ob eine Überschriftskarte außerhalb von
-  Sections rendert — die Ansicht nutzt keine Sections; falls sie nicht erscheint, ersetzt ein
-  Kartentitel die Überschrift.
-* **Heizungs-Board: die Gauge „Delta Vorlauf–Rücklauf" verpackt (26.09.).** Die Kachel meldete
-  „Entität ist nicht-numerisch", weil `sensor.heizung_differenz_vor_rucklauf` `unknown` liefert: es
-  ist ein Template-Helper (Config-Entry „Heizung: Differenz Vor- Rücklauf", domain `template`,
-  state `loaded`) über die beiden Flow-Monitor-Sensoren, und der ESP `esp32_c3_web_a8dfa8` ist
-  **absichtlich aus** (keine Heizsaison). Der Sensor ist also nicht defekt, sondern ehrlich — ein
-  0-Wert wäre erfunden. **Fix:** die Gauge steckt jetzt in einer `conditional`-Karte mit zwei
-  Bedingungen (`state_not: unknown`, `state_not: unavailable`) und erscheint von selbst wieder,
-  wenn geheizt wird. **Beleg:** die ESPHome-Integration ist gesund (der zweite ESP
-  `esp_wroom_32_keller` liefert 3/3 Werte), alle 18 Referenzen der Ansicht gültig, 6 Karten vorher
-  wie nachher. Ungeprüft: das Rendern (kein HA-Login). Die Karte „Heizung Übersicht" zeigt bewusst
-  weiter „nicht verfügbar" — sie sagt, warum die Differenz fehlt.
-* **ESP-Test am 26.09. bestanden — und die Dach-CO₂-Baustelle ist damit zu.** Der Nutzer schaltete
-  Flow-Monitor **und** Dach-CO₂-ESP ein. Beleg (aus dem eigenen Mithörer, Sekunden genau):
-  `wifi_status` des Flow-Monitors `OFFLINE → ONLINE` um **07:50:25**, erste Werte **07:49:28** —
-  Vorlauf 23,06 °C, Rücklauf 22,19 °C, **Differenz 0,9 °C**. Die Vorhersage „nahe 0" traf genau zu:
-  das Wasser steht weitgehend, weil nicht geheizt wird. **Korrektur des Nutzers (26.09.):** der
-  Flow-Monitor hängt an der **Gasheizung**, die mit der Daikin-Wärmepumpe `dach_ap22393`
-  **nichts zu tun hat**. Deren 0 W Kompressorleistung ist also **keine** Bestätigung für den
-  Heizkreis, sondern eine getrennte Anlage — der Assistent hatte beide zusammengezogen (beide
-  tragen „Dach" im Namen) und das als Bestätigung verkauft; **zurückgenommen**. Die Messwerte
-  selbst und der Fix bleiben davon unberührt. Damit ist die Bedingung der verpackten
-  Kachel erfüllt — **das Rendern hat der Nutzer zu prüfen**, das ist der einzige offene Rest.
-  Der **Dach-CO₂-Sensor**, seit 19.09. `unavailable`, war **kein Defekt**, sondern das
-  ausgeschaltete Gerät: jetzt 751 ppm / 44 % / 21,7 °C. Alle vier ESPHome-Geräte (Flow, WZ-CO₂,
-  Dach-CO₂, Keller-CO₂) sind damit gesund. **Damit ist der Punkt „Dach-CO₂ unavailable" erledigt.**
-* **Der stumme TRV in Ralfs Partykeller geklärt (26.09.) — es ist ein Tuya TS0601, nicht der SONOFF.**
-  **Wichtig, um Verwechslungen zu vermeiden:** die Karte **„Ralfs TRV"** auf dem Heizungs-Board ist
-  **`climate.sonoff_trvzb_thermostat`** — `mode=heat`, `action=idle`, Soll **7,0 °C** (Frostschutz),
-  Ist **20,9 °C**. Das Gerät **lebt** und ist ein **anderes** als das stumme. Die beiden Automationen
-  `trv_kellerparty_fenster_auf_heizung_zu` und `trv_kellerparty_fensterlogik_profi` hängen am SONOFF.
-  Das **stumme** Gerät ist der **Tuya TS0601** `Thermostat-Ralf-Keller-Party-Z`
-  (`a4:c1:38:8e:bf:be:09:0e`), dem der Assistent zunächst gefolgt ist; offenbar der **Vorgänger**,
-  abgelöst vom SONOFF. ZHA führt ihn als
-  `available=False`, `last_seen = 20.02.2026 20:07 UTC`. Das Feld ist geeicht (lebende Geräte:
-  Steckdose Mascha Minuten, Button 07:41, Fenster-Sensoren 07:21/07:17) und damit belastbar.
-  **Zusatzbefund:** für den Tuya-TS0601 (`a4:c1:38:8e:bf:be:09:0e`) existiert **keine
-  `climate`-Entität** — nur `rssi` und `lqi` (beide `disabled_by: integration`) plus die
-  Firmware-Update-Entität. Er ist also derzeit **nicht steuerbar**, auch wenn er zurückkäme.
-  **Ursache offen:** leere Batterie, ausgebaut, oder deaktiviert. Der Nutzer stellt klar: die
-  Kellerlampen sind **keine Router** (und hängen am Wandschalter, sind also meist aus) — die
-  Routen-Erklärung trägt damit nicht, der von mir vorgeschlagene Lichtschalter-Test ist hinfällig.
-  **Entscheidend ist die Zeitfolge:** der TRV verstummte am **20.02.**, also **vor** allen anderen
-  Ausfällen dieser Ecke (`ElektroHeizungKeller` 02.05., Eingangstür 27.05., Leuchte Ecke
-  Wohnzimmer 11.07.). Die Ursache liegt damit beim **Gerät selbst**.
-  Das ZHA-Netz ist gesund (413 Entitäten, 247 mit Wert, jüngste Meldung sekundenalt) — die Stille
-  ist geräteseitig, nicht netzweit.
-  **Stille Geräte, Stand 26.09. (7+ Tage):** Leuchte Ecke Wohnzimmer 11.07. (77 d), Eingangstür
-  27.05. (121 d, Zelle bestellt), ElektroHeizungKeller 02.05. (147 d), Tuya-TS0601
+    Open and purely cosmetic: seven `unk_manufacturer…` dead entries, the crooked battery IDs, and the
+    two sensors are missing on the hand-maintained boards `Klima`/`Heizung`.
+  * **These three cosmetic points were done the same evening:** battery entities renamed to
+    `sensor.toilettetemp_batterie` (55.5 %) and `sensor.tempsensorbad_batterie` (still `unknown`);
+    all seven `unk_manufacturer…` dead entries `hidden_by: user` (the one still active additionally
+    disabled); on `dashboard-klima` and `dashboard-heizung` one card **"Bad & Toilette"**
+    appended each (Klima 2→3, Heizung 5→6 cards, remaining content unchanged byte for byte). **Near-mistake
+    in the process:** the new card was built before the renaming and pointed to the old battery IDs —
+    noticed during the reference check against `/api/states` (2 unknown entities per board), corrected,
+    afterwards 0 unknown references. The appearance itself is not verified (no HA login).
+* **Window/door board extended (25.09.):** the view `fenster` of the board `fenster-turen`
+  now has a **“Batteries”** section at the bottom — a heading card with `mdi:battery-40` plus the list
+  of all ten unit batteries, in the **same room order** as the opening list above.
+  Style follows `treppe-alarm/0` (there: heading “Batteries” + plain entity list). All ten
+  units have a battery entity; `sensor.door_batterie` (entrance door) stands, as expected,
+  at `unavailable` until the CR1632 arrives. 20 references checked, **none** unknown, the remaining
+  view content unchanged byte-for-byte. Next cells by current reading: basement party room 66 %,
+  toilet 69.5 %, balcony door 73 %. **Unverified:** whether a heading card outside of
+  sections renders — the view uses no sections; if it does not appear, a
+  card title replaces the heading.
+* **Heating board: the “Delta flow–return” gauge wrapped (26.09.).** The tile reported
+  “entity is non-numeric” because `sensor.heizung_differenz_vor_rucklauf` returns `unknown`: it
+  is a template helper (config entry “Heizung: Differenz Vor- Rücklauf”, domain `template`,
+  state `loaded`) over the two flow-monitor sensors, and the ESP `esp32_c3_web_a8dfa8` is
+  **intentionally off** (no heating season). The sensor is therefore not faulty but honest — a
+  value of 0 would be invented. **Fix:** the gauge now sits in a `conditional` card with two
+  conditions (`state_not: unknown`, `state_not: unavailable`) and reappears by itself
+  once heating resumes. **Evidence:** the ESPHome integration is healthy (the second ESP
+  `esp_wroom_32_keller` delivers 3/3 values), all 18 references of the view valid, 6 cards before
+  as after. Unverified: the rendering (no HA login). The card “Heating overview” deliberately still
+  shows “not available” — it states why the difference is missing.
+* **ESP test passed on 26.09. — and the Dach-CO₂ construction site is closed with it.** The user switched
+  on the flow monitor **and** the Dach-CO₂ ESP. Evidence (from the own listener, accurate to the second):
+  `wifi_status` of the flow monitor `OFFLINE → ONLINE` at **07:50:25**, first values **07:49:28** —
+  flow 23.06 °C, return 22.19 °C, **difference 0.9 °C**. The prediction “near 0” was exactly right:
+  the water largely stands still because there is no heating. **User correction (26.09.):** the
+  flow monitor is attached to the **gas heating**, which has
+  **nothing to do with** the Daikin heat pump `dach_ap22393`. Its 0 W compressor power is therefore **no**
+  confirmation for the heating circuit but a separate plant — the assistant had conflated the two (both
+  carry “Dach” in their name) and sold that as confirmation; **retracted**. The measurements
+  themselves and the fix remain unaffected by it. The condition of the wrapped
+  tile is thus met — **the user has to check the rendering**, that is the only remaining open item.
+  The **Dach-CO₂ sensor**, `unavailable` since 19.09., was **not a fault** but the
+  switched-off device: now 751 ppm / 44 % / 21.7 °C. All four ESPHome devices (Flow, WZ-CO₂,
+  Dach-CO₂, Keller-CO₂) are thus healthy. **With that the item “Dach-CO₂ unavailable” is done.**
+* **The silent TRV in Ralf's party basement clarified (26.09.) — it is a Tuya TS0601, not the SONOFF.**
+  **Important, to avoid confusion:** the card **“Ralfs TRV”** on the heating board is
+  **`climate.sonoff_trvzb_thermostat`** — `mode=heat`, `action=idle`, target **7.0 °C** (frost protection),
+  actual **20.9 °C**. The device **is alive** and is a **different** one than the silent one. The two automations
+  `trv_kellerparty_fenster_auf_heizung_zu` and `trv_kellerparty_fensterlogik_profi` are attached to the SONOFF.
+  The **silent** device is the **Tuya TS0601** `Thermostat-Ralf-Keller-Party-Z`
+  (`a4:c1:38:8e:bf:be:09:0e`), which the assistant initially followed; evidently the **predecessor**,
+  superseded by the SONOFF. ZHA lists it as
+  `available=False`, `last_seen = 20.02.2026 20:07 UTC`. The field is calibrated (living devices:
+  socket Mascha minutes, button 07:41, window sensors 07:21/07:17) and therefore reliable.
+  **Additional finding:** for the Tuya TS0601 (`a4:c1:38:8e:bf:be:09:0e`) there is **no
+  `climate` entity** — only `rssi` and `lqi` (both `disabled_by: integration`) plus the
+  firmware update entity. It is therefore currently **not controllable**, even if it came back.
+  **Cause open:** empty battery, removed, or deactivated. The user makes clear: the
+  basement lamps are **not routers** (and are attached to the wall switch, so are usually off) — the
+  route explanation therefore does not hold, the light-switch test I proposed is moot.
+  **What is decisive is the time order:** the TRV went silent on **20.02.**, i.e. **before** all other
+  failures in this corner (`ElektroHeizungKeller` 02.05., entrance door 27.05., corner
+  living room light 11.07.). The cause therefore lies with the **device itself**.
+  The ZHA network is healthy (413 entities, 247 with a value, most recent report seconds old) — the silence
+  is on the device side, not network-wide.
+  **Silent devices, as of 26.09. (7+ days):** corner living room light 11.07. (77 d), entrance door
+  27.05. (121 d, cell ordered), ElektroHeizungKeller 02.05. (147 d), Tuya TS0601
   (Ralf-Keller-Party-Z) 20.02. (217 d),
-  HOBEIAN ZG-101ZL 14.06. (103 d) und 23.09.2025 (368 d), TS0203 21.09.2025 (369 d) — die letzten
-  drei sind die zuvor deaktivierten Karteileichen. `Steckdose PC Lea` ist seit dem 23.09. ohne
-  Kontakt — **absichtlich: sie ist nicht angeschlossen** (Nutzer), also kein Defekt. Die frühere
-  Bezeichnung dieser beiden als „Router offline" (25.09.) ist damit mindestens für Lea's Dose
-  **falsch**; ob `ElektroHeizungKeller` ein Router ist, ist offen.
-  **Nebenbei:** die vier Daikin-Splits heißen `climate.dach_ap22393`, `kevin_ap02845`,
-  `lea_ap27941`, `wzr_ap86576` (alle `off`) — nur der SONOFF TRVZB auf dem Heizungs-Board ist `heat`.
-  **Warum der Tuya keine Entitäten hat (geprüft am 26.09.):** sein Fingerprint
-  `_TZE284_noixx2uz` kommt im **gesamten** Quirks-Repo `zigpy/zha-device-handlers` (Branch `dev`)
-  **nicht** vor — daher nur rssi/lqi. Auch **zigbee2mqtt** hat ihn nicht in der Gerätedatenbank,
-  dort laufen drei offene „External Converter“-Anfragen (#29450, #30906, #31060). Die Community-
-  sammlung `dlnraja/com.tuya.zigbee` führt ihn als **`radiator_valve`** — es ist also ein
-  Heizkörperventil. **Gangbarer Weg, falls er genutzt werden soll:** der Quirk `tuya/tuya_trv.py`
-  kennt schon sechs `_TZE284`-TRVs (`c6wv4xyo`, `ne4pikwm`, `o3x45p96`, `ogx8u5z6`, `p3dbf6qs`,
-  `ymldrmzx`), alle nach dem Muster `TuyaThermostat` + `MODELS_INFO` — eine lokale Kopie mit seinem
-  Fingerprint in `/config/zha_quirks/` wäre wenige Zeilen, die **Datenpunkte** müssten aber gegen die
-  z2m-Converter-Threads verifiziert werden. **Voraussetzung in jedem Fall:** das Gerät ist seit
-  217 Tagen nicht im Netz und muss **neu angelernt** werden. Reihenfolge: erst neu anlernen (billig,
-  vielleicht erkennt ZHA inzwischen mehr), dann ggf. Quirk, sonst Karteileiche.
-* **Lokaler Quirk für das Tuya-Ventil geschrieben (26.09.) — `local-tools/ts0601_trv_noixx2uz.py`**
-  (gitignored, **nicht** im öffentlichen Repo; 84 Zeilen, Syntax geprüft). Aufbau:
-  `TuyaQuirkBuilder("_TZE284_noixx2uz", "TS0601")` mit den Datenpunkten **2** (system_mode),
-  **3** (running_state), **4** (Sollwert, ×10), **5** (Ist-Temperatur, ×10), **7** (Kindersicherung),
-  **36** (Frostschutz). Diese sechs sind **doppelt belegt**: der z2m-Community-Converter für *genau
-  diesen* Fingerprint (Thread #29450) und der 16-Fingerprint-Familienblock in
-  `zhaquirks/tuya/tuya_trv.py` stimmen bei 2/3/4/5/7 exakt überein (geprüft, nicht vermutet).
-  **Bewusst weggelassen:** Kalibrierung (Familie DP 47, Converter DP 114) und Fehler-/Batteriewarnung
-  (Familie DP 35) — für dieses Gerät nicht belegt, sonst Gefahr falscher Werte.
-  **Einbau (offen, seine Hand):** Datei nach `/config/zha_quirks/`, in `configuration.yaml`
-  `zha:` → `custom_quirks_path: /config/zha_quirks/`, **HA-Neustart**, **danach** das Ventil neu
-  anlernen — der Quirk muss beim Koppeln schon aktiv sein. **Danach prüfen:** Ist-Temperatur gegen ein
-  bekanntes Thermometer, Sollwert schreiben und am Gerät kontrollieren. Der Nutzer hat mehrere
-  Heizkörper und nutzt Ventile für „Fenster auf → Heizkörper zu", deshalb lohnt der Weg. **Wenn es
-  funktioniert, wäre ein PR an `zigpy/zha-device-handlers` der nächste Schritt** (eine Zeile in der
-  Familie, plus Löschen der lokalen Kopie).
-* **Quirk nachweislich geladen (26.09.) — vor dem Anlernen geprüft.** Beleg: `zhaquirks/__init__.py`
-  setzt `loaded = True` **nur** im `else`-Zweig nach fehlerfreiem `exec_module` (Zeile 611) und loggt
-  dann bei 618 „Loaded custom quirks…“; im Systemlog (WebSocket `system_log/list` — **nicht**
-  `/api/error_log`, den Endpunkt gibt es nicht mehr, HTTP 404) steht diese WARNUNG um **08:13:39**
-  von heute, und es gibt **keinen** Eintrag „Unexpected exception importing custom quirk“. Die Datei
-  ist also fehlerfrei importiert. **Damit ist auch bewiesen, dass der `configuration.yaml`-Weg
-  trägt:** die Optionen des ZHA-Config-Entry sind `null`, der Pfad kam von dort.
-  Nebenbei aus demselben Log: der Flow-Monitor-ESP hat die IP **192.168.178.28** (um 08:13:41 eine
-  einmalige aioesphomeapi-Verbindungswarnung, Neustart-Race — danach liefert er); um 08:13:44 eine
-  Template-Warnung **`'batt_low' is undefined`** (irgendwo referenziert eine Vorlage eine nicht
-  definierte Variable, noch nicht gefunden — kein Dateizugriff auf /config); dazu Modbus-
-  Einheitenwarnungen für `sensor.sdm630_*` (`VAR`, `kvarh`, leeres `power_factor`) — kosmetisch.
-  **Die Methode ist als Skill-Referenz gesichert:**
+  HOBEIAN ZG-101ZL 14.06. (103 d) and 23.09.2025 (368 d), TS0203 21.09.2025 (369 d) — the last
+  three are the previously deactivated dead entries. `Steckdose PC Lea` has been without
+  contact since 23.09. — **intentionally: it is not connected** (user), so no fault. The earlier
+  labelling of these two as “Router offline” (25.09.) is thus at least for Lea's socket
+  **wrong**; whether `ElektroHeizungKeller` is a router is open.
+  **Incidentally:** the four Daikin splits are named `climate.dach_ap22393`, `kevin_ap02845`,
+  `lea_ap27941`, `wzr_ap86576` (all `off`) — only the SONOFF TRVZB on the heating board is `heat`.
+  **Why the Tuya has no entities (checked on 26.09.):** its fingerprint
+  `_TZE284_noixx2uz` does **not** occur in the **entire** quirks repo `zigpy/zha-device-handlers` (branch `dev`)
+  — hence only rssi/lqi. **zigbee2mqtt** also does not have it in the device database,
+  there three open “External Converter” requests are running (#29450, #30906, #31060). The community
+  collection `dlnraja/com.tuya.zigbee` lists it as **`radiator_valve`** — so it is a
+  radiator valve. **A viable path, if it is to be used:** the quirk `tuya/tuya_trv.py`
+  already knows six `_TZE284` TRVs (`c6wv4xyo`, `ne4pikwm`, `o3x45p96`, `ogx8u5z6`, `p3dbf6qs`,
+  `ymldrmzx`), all following the pattern `TuyaThermostat` + `MODELS_INFO` — a local copy with its
+  fingerprint in `/config/zha_quirks/` would be a few lines, but the **data points** would have to be verified against the
+  z2m converter threads. **Prerequisite in any case:** the device has
+  not been on the network for 217 days and must be **re-paired**. Order: first re-pair (cheap,
+  perhaps ZHA recognises more by now), then the quirk if needed, otherwise dead entry.
+* **Local quirk for the Tuya valve written (26.09.) — `local-tools/ts0601_trv_noixx2uz.py`**
+  (gitignored, **not** in the public repo; 84 lines, syntax checked). Structure:
+  `TuyaQuirkBuilder("_TZE284_noixx2uz", "TS0601")` with the data points **2** (system_mode),
+  **3** (running_state), **4** (setpoint, ×10), **5** (actual temperature, ×10), **7** (child lock),
+  **36** (frost protection). These six are **doubly attested**: the z2m community converter for *exactly
+  this* fingerprint (thread #29450) and the 16-fingerprint family block in
+  `zhaquirks/tuya/tuya_trv.py` agree exactly on 2/3/4/5/7 (checked, not assumed).
+  **Deliberately omitted:** calibration (family DP 47, converter DP 114) and fault/battery warning
+  (family DP 35) — not attested for this device, otherwise risk of wrong values.
+  **Installation (open, his hand):** file to `/config/zha_quirks/`, in `configuration.yaml`
+  `zha:` → `custom_quirks_path: /config/zha_quirks/`, **HA restart**, **afterwards** re-pair the valve
+  — the quirk must already be active at pairing. **Then check:** actual temperature against a
+  known thermometer, write the setpoint and check on the device. The user has several
+  radiators and uses valves for “window open → radiator closed”, so the path is worthwhile. **If it
+  works, a PR to `zigpy/zha-device-handlers` would be the next step** (one line in the
+  family, plus deleting the local copy).
+* **Quirk demonstrably loaded (26.09.) — checked before pairing.** Evidence: `zhaquirks/__init__.py`
+  sets `loaded = True` **only** in the `else` branch after a faultless `exec_module` (line 611) and then logs
+  at 618 “Loaded custom quirks…”; in the system log (WebSocket `system_log/list` — **not**
+  `/api/error_log`, that endpoint no longer exists, HTTP 404) this WARNING stands at **08:13:39**
+  from today, and there is **no** entry “Unexpected exception importing custom quirk”. The file
+  is therefore imported faultlessly. **This also proves that the `configuration.yaml` route
+  holds:** the options of the ZHA config entry are `null`, the path came from there.
+  Incidentally from the same log: the flow-monitor ESP has IP **192.168.178.28** (at 08:13:41 a
+  one-off aioesphomeapi connection warning, restart race — afterwards it delivers); at 08:13:44 a
+  template warning **`'batt_low' is undefined`** (somewhere a template references an undefined
+  variable, not yet found — no file access to /config); plus Modbus
+  unit warnings for `sensor.sdm630_*` (`VAR`, `kvarh`, empty `power_factor`) — cosmetic.
+  **The method is secured as a skill reference:**
   `home-assistant-integration/references/unsupported-zigbee-device.md`.
-  **Nächster Schritt:** Ventil anlernen, danach Ist-Temperatur und Sollwert gegenprüfen.
-* **Der Quirk greift — Tuya-Ventil ist nach 217 Tagen wieder im Netz (26.09., 08:19).** Harte Belege:
-  ZHA meldet **`quirk_applied: True`** und `quirk_class: 'zhaquirks.tuya.builder:(_TZE284_noixx2uz /
-  TS0601)'`; das Gerät ist `available: True`, **`last_seen` 08:20:14** (Sekunden alt), **LQI 156**,
-  RSSI −61, `nwk` 61126 — es funkt also. **Dieselbe Geräte-Kennung wie vorher**
-  (`5bc08943e7c3a0290c370097e41e7edf`) — **kein Doppeleintrag**, der alte Name
-  „Thermostat-Ralf-Keller-Party-Z" und der Bereich `keller_party` blieben erhalten.
-  **Der Quirk hat genau die zugesagten Entitäten erzeugt:**
-  `climate.thermostat_ralf_keller_party` (Modi off/heat, 5–30 °C),
-  `switch.…_frostschutz` (**DP 36**), `switch.…_kindersicherung` (**DP 7**), dazu
+  **Next step:** pair the valve, then cross-check actual temperature and setpoint.
+* **The quirk works — Tuya valve is back on the network after 217 days (26.09., 08:19).** Hard evidence:
+  ZHA reports **`quirk_applied: True`** and `quirk_class: 'zhaquirks.tuya.builder:(_TZE284_noixx2uz /
+  TS0601)'`; the device is `available: True`, **`last_seen` 08:20:14** (seconds old), **LQI 156**,
+  RSSI −61, `nwk` 61126 — so it is transmitting. **The same device identifier as before**
+  (`5bc08943e7c3a0290c370097e41e7edf`) — **no duplicate entry**, the old name
+  “Thermostat-Ralf-Keller-Party-Z” and the area `keller_party` were preserved.
+  **The quirk has created exactly the promised entities:**
+  `climate.thermostat_ralf_keller_party` (modes off/heat, 5–30 °C),
+  `switch.…_frostschutz` (**DP 36**), `switch.…_kindersicherung` (**DP 7**), plus
   `sensor.…_hlk_aktion`, `…_pi_warmebedarf`, `…_quelle_der_sollwertanderung`, `…_zeitstempel`
-  (die Zusatz-Entitäten der Familie `TuyaThermostatV2` — auch das ein Beweis, dass die richtige
-  Klasse geladen wurde). **Noch offen:** die Werte stehen auf `unavailable`
-  (`soll=None`, `ist=None`), weil ein Batteriegerät erst aufwachen muss — Wecken per Tastendruck
-  oder ein Sollwert-Schreibvorgang (ZHA reiht Befehle für Schlafgeräte ein).
-  **Letzter Prüfschritt:** Ist-Temperatur gegen ein bekanntes Thermometer, Sollwert schreiben und
-  **am Gerät** kontrollieren. Erst damit ist die Datenpunkt-Zuordnung verifiziert.
-* **Zwischenstand Ventil (26.09., ~08:35): Entität hängt, ZHA-Neuladen ist der nächste Schritt.**
-  Der Quirk griff (s.o.), aber die Entitäten kamen nie hoch: `climate.thermostat_ralf_keller_party`
-  blieb `unavailable` (`soll/ist=None`), ebenso `sensor.…_hlk_aktion`; die übrigen Sensoren `unknown`.
-  Die Entstehungs-Historie zeigt den Grund: `unknown` **08:19:14** → `unavailable` **08:19:27** — die
-  Entität wurde angelegt, während das Gerät noch nicht fertig war (bekanntes Tuya/ZHA-Muster).
-  Das Gerät selbst ist gesund: `available: True`, `last_seen` wandert (08:21:24), LQI 156.
-  **Versucht:** (1) `homeassistant.update_entity` auf alle Entitäten — brachte die Sensoren von
-  `unavailable` auf `unknown`, aber **keine Datenpunkte**: die `off`-Werte der beiden Schalter können
-  Standardwerte sein, ein Gerätebericht ist **nicht** nachgewiesen. (2) Deaktivieren/Reaktivieren über
-  die Registry (`disabled_by: user` → `None`) — Ergebnis: die Entitäten sind wieder *aktiviert*,
-  erscheinen aber erst nach einem **Neuladen der ZHA-Integration**. Das ist jetzt der ausstehende
-  Schritt und wartet auf sein Okay (Zigbee setzt dabei ~30 s aus, Alarme und Taster sind so lange
-  blind). Der Nutzer hat **20 °C am Ventil** eingestellt; in HA ist das noch nicht sichtbar — sobald
-  die Entität lebt, muss dort **20,0** stehen (das ist der DP-4-Test von der Geräteseite).
-  **Beinahe-Unfall, dokumentiert:** Ein generiertes Skript enthielt versehentlich einen
-  `homeassistant.turn_off`-Aufruf **ohne Ziel** — in HA schaltet das *alle* schaltbaren Geräte ab.
-  Vor dem Ausführen bemerkt und entfernt. Regel jetzt in der Skill-Referenz
+  (the extra entities of the family `TuyaThermostatV2` — that too is proof that the right
+  class was loaded). **Still open:** the values stand at `unavailable`
+  (`soll=None`, `ist=None`), because a battery device must first wake up — waking by button press
+  or a setpoint write (ZHA queues commands for sleeping devices).
+  **Final check step:** actual temperature against a known thermometer, write the setpoint and
+  check **on the device**. Only then is the data-point mapping verified.
+* **Interim status valve (26.09., ~08:35): entity hangs, reloading ZHA is the next step.**
+  The quirk took effect (see above), but the entities never came up: `climate.thermostat_ralf_keller_party`
+  remained `unavailable` (`soll/ist=None`), likewise `sensor.…_hlk_aktion`; the other sensors `unknown`.
+  The creation history shows the reason: `unknown` **08:19:14** → `unavailable` **08:19:27** — the
+  entity was created while the device was not yet ready (known Tuya/ZHA pattern).
+  The device itself is healthy: `available: True`, `last_seen` advances (08:21:24), LQI 156.
+  **Tried:** (1) `homeassistant.update_entity` on all entities — brought the sensors from
+  `unavailable` to `unknown`, but **no data points**: the `off` values of the two switches may
+  be defaults, a device report is **not** proven. (2) Deactivating/reactivating via
+  the registry (`disabled_by: user` → `None`) — result: the entities are *enabled* again,
+  but only appear after a **reload of the ZHA integration**. That is now the pending
+  step and waits for his okay (Zigbee drops out for ~30 s during this, alarms and buttons are blind
+  for that time). The user has set **20 °C on the valve**; in HA that is not yet visible — as soon as
+  the entity lives, **20.0** must stand there (that is the DP-4 test from the device side).
+  **Near-accident, documented:** A generated script accidentally contained a
+  `homeassistant.turn_off` call **without a target** — in HA that switches off *all* switchable devices.
+  Noticed and removed before execution. Rule now in the skill reference
   `home-assistant-integration/references/service-call-safety.md`.
-* **Ventil: was der *funktionierende* Community-Converter sagt (26.09.).** Thread #29450 enthält vier
-  Fassungen; die **letzte** (Kommentar 04.02.) ist die, mit der der Autor „already great results"
-  meldet — er hat **acht** dieser Ventile. Ihre Datenpunkte: **2 preset** (auto/manual/leave),
-  **3 running_state**, **4 Sollwert ÷10**, **5 Ist-Temperatur** (vorzeichenbehaftet, ÷10),
-  **6 Batterie**, **7 Kindersicherung** (`LOCK:false, UNLOCK:true` — **invertiert**),
-  **28–34 Wochenprogramm**. **Entscheidend:** DP 4 und 5 decken sich mit meiner Quirk-Zuordnung —
-  die **Kernzuordnung ist richtig**. Unterschiede: DP 2 ist dort *preset* statt system_mode (die
-  Werte 0/1/2 passen zusammen), DP 6 (Batterie) und das Wochenprogramm fehlen mir.
-  **Der Autor beschreibt genau unser Symptom:** die Geräte gehen „alle zwei Wochen" in eine
-  **Kalibrierungsschleife**, und **nur ein Batterie-Entfernen** bringt sie zurück. Das passt zu dem
-  blinkenden **„CL"** auf seinem Display — Kindersicherung *oder* Kalibrierung, beides denkbar.
-  **Stand:** das Ventil funkt (`last_seen` sekundenalt, LQI 160), liefert aber **keine** Werte;
-  das Systemlog zeigt **keine** Warnung über unbekannte Datenpunkte. Ohne Wirkung probiert:
-  `homeassistant.update_entity`, Deaktivieren/Reaktivieren der Entitäten, Lesebefehl auf den
-  Standard-Thermostat-Cluster 0x0201 (Timeout, dann HTTP 500). Mithörer läuft bis ~08:30.
-  **Nächste Schritte:** (a) abwarten, ob sich der Sperr-/Kalibrierzustand löst; (b) sonst das
-  Debug-Protokoll auswerten (Debug per `logger.set_level` wieder einschalten, dann nach `Tuya`
-  suchen — an `/config` komme ich nicht heran, das muss der Nutzer); (c) Quirk um DP 6 und das
-  Wochenprogramm erweitern. **Das Debug ist wieder aus** (auf `warning` zurückgesetzt).
-* **Ventil: eine ganze Stunde Beobachtung, kein einziger Wert (26.09., 06:30–07:30).** Der Mithörer
-  (Takt 20 s) protokollierte **keine einzige Zustandsänderung**; `soll`/`ist` blieben durchgehend
-  `None`. Das Gerät war dabei durchgehend gesund und wurde sogar besser: `last_seen` jeweils
-  sekundenalt, **LQI 160 → 176**, **RSSI −60 → −56** (ausgezeichneter Link). **Wichtige Korrektur
-  (Nutzer hat zu Recht nachgebohrt):** daraus folgt **nicht**, dass „keine Daten ankommen". Es sind
-  zwei verschiedene Fehler — **(A)** das Gerät sendet gar nichts (nur Netzpakete), **(B)** es sendet
-  Daten, aber mit **anderen Datenpunkt-Nummern** als in meinem Quirk, oder **(C)** die richtigen
-  Daten kommen an und die Entität verarbeitet sie nicht. `last_seen` beweist nur **Erreichbarkeit**,
-  nicht Datentransfer — ein Schlafgerät hält ihn mit reinen Funk-Polls frisch. Und meine frühere
-  Begründung („kein Eintrag im Systemlog") war **wertlos**: in der Quelle
-  (`zhaquirks/tuya/__init__.py`) wird ein unbekannter Tuya-Frame mit **`_LOGGER.debug`**
-  protokolliert („Unrecognised command: %x"), **nicht** als Warnung — im Systemlog kann er also
-  gar nicht erscheinen. **Das Debug-Mitlesen läuft weiter** (`zigpy.zcl` und `zhaquirks.tuya` auf
-  `debug`, `homeassistant.components.zha` zurück auf `warning`), damit das Protokoll übersichtlich
-  bleibt; **danach alles auf `warning` zurücksetzen**.
-  **Offene Schritte:** (1) Nutzer sucht unter Einstellungen → System → Protokolle nach `Tuya` und
-  schickt ein Bild: Zeilen vorhanden → Zuordnung anpassen; keine Zeilen → sauber neu anlernen.
-  (2) Offene Frage: steht „CL" noch im Display (Kindersicherung; aufheben mit **+ und −** zusammen).
-* **Ventil: der Tagesbefund in Kurzform (26.09., bis ~10:40).** Das Gerät ist **erreichbar und
-  meldet sich**, liefert aber **keine Daten** und nimmt **keine** an. Belege:
-  - Aus dem Protokoll (Suche nach der IEEE) gibt es **vier** Zeilen, alle am **26.09. 08:31:41 und
-    08:32:02**: `Device 0xeec6 (a4:c1:38:8e:bf:be:09:0e) joined the network` — der **Beitritt nach
-    Batteriewechsel/Neustart**, danach **nichts**. Wichtig: das sind **INFO**-Zeilen; reine
-    Funk-Polls protokolliert zigpy gar nicht, „nichts weiter" heißt also nur: **kein ZCL-Verkehr**.
-  - **`last_seen` wandert in 15-Minuten-Schritten** (10:19:30 → 10:34:21) — das ist das
-    Prüfintervall des Ventils. Es ist also wach und pollt.
-  - **Zwei Schreibbefehle von HA aus ohne jede Wirkung:** 10:19:30 `set_temperature 11.5` und
-    ~10:35 `set_temperature 12.5` — Entitäten blieben `unknown`, 15-Minuten-Mithörer ohne einen
-    Wechsel, Display zeigte weiter 15. **`last_seen` bewegt sich also, während nichts ankommt und
-    nichts ankommt an.**
-  - Nutzer berichtet: Display zeigt **15** (vermutlich Sollwert; vorher hatte er 11 gesetzt) und
-    vorher **"CL"** (Kindersicherung) — der Autor des Converters beschreibt genau solche Zustände.
-  **Wichtige Lehre für die Suche:** zigpy nennt Geräte in Debug-Zeilen mit der **Kurzadresse**
-  (`0xeec6`), nicht mit der vollen IEEE — deshalb fand die IEEE-Suche nur die vier Zeilen.
-  **Offen:** Suche nach `eec6` und `0xef00` um 10:19/10:35 im Protokoll (zeigt, ob der Befehl
-  überhaupt rausgeht und ob eine Antwort kommt). Debug steht noch auf `debug` für `zigpy.zcl` und
-  `zhaquirks.tuya` — **danach zurücksetzen**.
-* **DURCHBRUCH: die Ursache ist gefunden (26.09., ~10:45) — das Ventil braucht den „data query"-Spruch.**
-  Das vom Nutzer geschickte Protokoll zeigt für `0xEEC6` (nwk 61126 = das Ventil) **über den ganzen
-  Zeitraum nur eine einzige Sorte Verkehr**: alle ~15 Minuten ein `set_time_request` (Tuya-Zeitsync),
-  den zigpy mit `DefaultResponse(SUCCESS)` beantwortet — **sonst nichts**, **kein einziger
-  Datenpunkt-Bericht**. Zusätzlich: **kein einziger Schreibversuch** zu meinen beiden
-  `set_temperature`-Aufrufen (10:19:30 / ~10:35) → **meine Befehle sind nicht einmal rausgegangen**;
-  die **15** im Display ist also **nicht** von mir.
-  **Der Mechanismus** (in `zhaquirks/tuya/__init__.py`): Klasse `BaseEnchantedDevice` —
+* **Valve: what the *working* community converter says (26.09.).** Thread #29450 contains four
+  versions; the **last** (comment 04.02.) is the one with which the author reports “already great results” —
+  he has **eight** of these valves. Their data points: **2 preset** (auto/manual/leave),
+  **3 running_state**, **4 setpoint ÷10**, **5 actual temperature** (signed, ÷10),
+  **6 battery**, **7 child lock** (`LOCK:false, UNLOCK:true` — **inverted**),
+  **28–34 weekly schedule**. **Decisive:** DP 4 and 5 match my quirk mapping —
+  the **core mapping is right**. Differences: DP 2 is *preset* there instead of system_mode (the
+  values 0/1/2 fit together), DP 6 (battery) and the weekly schedule are missing from mine.
+  **The author describes exactly our symptom:** the devices go “every two weeks” into a
+  **calibration loop**, and **only removing the battery** brings them back. That fits the
+  blinking **“CL”** on his display — child lock *or* calibration, both conceivable.
+  **Status:** the valve transmits (`last_seen` seconds old, LQI 160) but delivers **no** values;
+  the system log shows **no** warning about unknown data points. Tried without effect:
+  `homeassistant.update_entity`, deactivating/reactivating the entities, a read command on the
+  standard thermostat cluster 0x0201 (timeout, then HTTP 500). Listener runs until ~08:30.
+  **Next steps:** (a) wait and see whether the lock/calibration state resolves; (b) otherwise
+  evaluate the debug log (re-enable debug via `logger.set_level`, then search for `Tuya`
+  — I cannot reach `/config`, the user must do that); (c) extend the quirk with DP 6 and the
+  weekly schedule. **Debug is off again** (reset to `warning`).
+* **Valve: a whole hour of observation, not a single value (26.09., 06:30–07:30).** The listener
+  (20 s interval) logged **not a single state change**; `soll`/`ist` remained throughout
+  `None`. The device was throughout healthy and even got better: `last_seen` in each case
+  seconds old, **LQI 160 → 176**, **RSSI −60 → −56** (excellent link). **Important correction
+  (user rightly pressed):** it does **not** follow from this that “no data arrive”. There are
+  two different faults — **(A)** the device sends nothing at all (only network packets), **(B)** it sends
+  data but with **different data-point numbers** than in my quirk, or **(C)** the right
+  data arrive and the entity does not process them. `last_seen` proves only **reachability**,
+  not data transfer — a sleeping device keeps it fresh with pure radio polls. And my earlier
+  reasoning (“no entry in the system log”) was **worthless**: in the source
+  (`zhaquirks/tuya/__init__.py`) an unknown Tuya frame is logged with **`_LOGGER.debug`**
+  (“Unrecognised command: %x”), **not** as a warning — in the system log it therefore
+  cannot appear at all. **The debug listening continues** (`zigpy.zcl` and `zhaquirks.tuya` at
+  `debug`, `homeassistant.components.zha` back to `warning`), so that the log stays clear;
+  **then reset everything to `warning`**.
+  **Open steps:** (1) user looks under Settings → System → Logs for `Tuya` and
+  sends a screenshot: lines present → adjust the mapping; no lines → cleanly re-pair.
+  (2) Open question: does “CL” still stand on the display (child lock; clear with **+ and −** together).
+* **Valve: the day's finding in brief (26.09., until ~10:40).** The device is **reachable and
+  reports in**, but delivers **no data** and accepts **none**. Evidence:
+  - From the log (search for the IEEE) there are **four** lines, all at **26.09. 08:31:41 and
+    08:32:02**: `Device 0xeec6 (a4:c1:38:8e:bf:be:09:0e) joined the network` — the **join after
+    battery change/restart**, after that **nothing**. Important: these are **INFO** lines; zigpy does
+    not log pure radio polls at all, so "nothing further" only means: **no ZCL traffic**.
+  - **`last_seen` moves in 15-minute steps** (10:19:30 → 10:34:21) — that is the valve's polling
+    interval. So it is awake and polling.
+  - **Two write commands from HA with no effect at all:** 10:19:30 `set_temperature 11.5` and
+    ~10:35 `set_temperature 12.5` — entities stayed `unknown`, 15-minute listener without a single
+    change, display kept showing 15. **So `last_seen` moves while nothing arrives and nothing gets
+    through.**
+  - User reports: display shows **15** (presumably the setpoint; he had earlier set 11) and earlier
+    **"CL"** (child lock) — the converter's author describes exactly such states.
+  **Important lesson for the search:** zigpy names devices in debug lines by the **short address**
+  (`0xeec6`), not by the full IEEE — that is why the IEEE search found only the four lines.
+  **Open:** search for `eec6` and `0xef00` around 10:19/10:35 in the log (shows whether the command
+  goes out at all and whether a reply comes back). Debug is still set to `debug` for `zigpy.zcl` and
+  `zhaquirks.tuya` — **reset it afterwards**.
+* **BREAKTHROUGH: the cause is found (26.09., ~10:45) — the valve needs the "data query" spell.**
+  The log sent by the user shows for `0xEEC6` (nwk 61126 = the valve) **over the whole period only a
+  single kind of traffic**: every ~15 minutes a `set_time_request` (Tuya time sync), which zigpy
+  answers with `DefaultResponse(SUCCESS)` — **nothing else**, **not a single datapoint report**.
+  In addition: **not a single write attempt** for my two `set_temperature` calls (10:19:30 / ~10:35)
+  → **my commands did not even go out**; the **15** on the display is therefore **not** from me.
+  **The mechanism** (in `zhaquirks/tuya/__init__.py`): class `BaseEnchantedDevice` —
   ``tuya_spell_data_query: bool = False  # additional spell needed for some devices to send data``.
-  Der Spruch (`spell_data_query()` → `tuya_cluster.command(TUYA_QUERY_DATA)`, **0x03**) wird **einmal
-  bei der Gerätekonfiguration** geworfen. Im modernen Builder schaltet ihn
-  `.tuya_enchantment(data_query_spell=True)` ein (erzeugt `EnchantedDeviceV2(CustomZigpyDevice,
-  BaseEnchantedDevice)`); **Standard ist `False`** — und **weder die 16er-Familie noch mein Quirk
-  haben ihn je eingeschaltet**.
-  **Fix eingebaut:** `local-tools/ts0601_trv_noixx2uz.py` enthält jetzt `.tuya_enchantment(
-  data_query_spell=True)` (89 Zeilen, Syntax geprüft, weiter gitignored).
-  **Nächste Schritte beim Nutzer:** Datei ersetzen → **HA neu starten** → wenn dann noch nichts kommt,
-  das Ventil **neu anlernen** (der Spruch läuft bei der Konfiguration). **Beweis im Protokoll:**
-  die Debug-Zeile `Executing data query spell on Tuya device a4:c1:38:8e:bf:be:09:0e` — sie enthält
-  die **IEEE** und ist damit direkt suchbar. Ein manueller Versuch, `0x03` per
-  `zha.issue_zigbee_cluster_command` zu schicken, lief in einen HTTP 504 (Dienst wartet auf Antwort,
-  Gerät schläft) — der Befehl steckt womöglich in der Warteschlange.
-* **Korrektur und neue Reihenfolge (26.09., ~10:55) — der Spruch wird nur EINMAL geworfen.** Der
-  Neustart um 10:47 lief ins Leere: die Entitäten wurden zwar neu aufgebaut (10:47:48), aber das
-  Ventil **schlief** dabei (`last_seen` 10:34 → 10:49), LQI/rssi zunächst leer. Der Zauberspruch ist
-  ein **Befehl an das Gerät** und wird **einmal bei der Konfiguration** geworfen — er wird **nicht
-  wiederholt**. Genau wie der manuelle Versuch, der in einen **Timeout** lief. **Folgerung: der
-  Neustart kann das prinzipiell nicht leisten, wenn das Gerät dabei schläft. Beim *Anlernen* ist das
-  Gerät wach — dort wird der Spruch zugestellt.** Also: Datei ersetzen → **Gerät entfernen und neu
-  anlernen** (nicht nur neu starten).
-  **Zusätzlich korrigiert:** `.tuya_enchantment(data_query_spell=True)` stand in meiner Fassung
-  *ganz früh* in der Kette; alle vorhandenen Tuya-Quirks (z. B. `tuya_trv.py`, `tuya_sensor.py`,
-  `ty0201.py`) setzen es **kurz vor `skip_configuration()`/`add_to_registry()`**. Nach Prüfung des
-  Builders ist `device_class()` nur ein einfacher Setter (kein Reset) — die frühe Position war also
-  **vermutlich unschädlich**, aber die Konvention ist jetzt eingehalten (93 Zeilen, Syntax geprüft,
-  weiter gitignored). Ausdrücklich als **Vorsichtsmaßnahme** dokumentiert, nicht als bewiesene
-  Ursache. `skip_configuration` betrifft laut Quelle nur die **Reporting-Konfiguration**, nicht die
-  Zaubersprüche.
-* **BESTÄTIGT im Protokoll vom 26.09. (10:55) — der Aufruf-Punkt war der Fehler.** Die Datei des
-  Nutzers zeigt für das Ventil (jetzt Kurzadresse **0xAC57**, IEEE unverändert → neu beigetreten):
+  The spell (`spell_data_query()` → `tuya_cluster.command(TUYA_QUERY_DATA)`, **0x03**) is cast **once
+  at device configuration**. In the modern builder `.tuya_enchantment(data_query_spell=True)` switches
+  it on (creates `EnchantedDeviceV2(CustomZigpyDevice, BaseEnchantedDevice)`); **the default is
+  `False`** — and **neither the 16-family nor my quirk ever switched it on**.
+  **Fix implemented:** `local-tools/ts0601_trv_noixx2uz.py` now contains `.tuya_enchantment(data_query_spell=True)`
+  (89 lines, syntax checked, still gitignored).
+  **Next steps for the user:** replace the file → **restart HA** → if still nothing comes, **re-pair**
+  the valve (the spell runs at configuration). **Proof in the log:** the debug line `Executing data
+  query spell on Tuya device a4:c1:38:8e:bf:be:09:0e` — it contains the **IEEE** and is therefore
+  directly searchable. A manual attempt to send `0x03` via `zha.issue_zigbee_cluster_command` ran into
+  an HTTP 504 (service waits for a reply, device asleep) — the command may be stuck in the queue.
+* **Correction and new order (26.09., ~10:55) — the spell is cast only ONCE.** The restart at 10:47
+  came to nothing: the entities were indeed rebuilt (10:47:48), but the valve was **asleep** during it
+  (`last_seen` 10:34 → 10:49), LQI/rssi initially empty. The magic spell is a **command to the device**
+  and is cast **once at configuration** — it is **not repeated**. Just like the manual attempt, which
+  ran into a **timeout**. **Conclusion: the restart fundamentally cannot achieve this if the device is
+  asleep during it. During *pairing* the device is awake — that is where the spell is delivered.** So:
+  replace the file → **remove the device and re-pair** (not just restart).
+  **Additionally corrected:** in my version `.tuya_enchantment(data_query_spell=True)` stood *very
+  early* in the chain; all existing Tuya quirks (e.g. `tuya_trv.py`, `tuya_sensor.py`, `ty0201.py`)
+  set it **shortly before `skip_configuration()`/`add_to_registry()`**. After examining the builder,
+  `device_class()` is only a simple setter (no reset) — so the early position was **presumably
+  harmless**, but the convention is now followed (93 lines, syntax checked, still gitignored).
+  Documented explicitly as a **precaution**, not as a proven cause. According to the source,
+  `skip_configuration` affects only the **reporting configuration**, not the magic spells.
+* **CONFIRMED in the log of 26.09. (10:55) — the call point was the error.** The user's file shows for
+  the valve (now short address **0xAC57**, IEEE unchanged → rejoined):
   ```
   10:54:32  [zha.zigbee.device] [0xAC57](TS0601): started configuration
   10:54:32  [zha.zigbee.device] [0xAC57](TS0601): applying quirks custom device configuration
   10:54:32  [zigpy.device] [0xac57] Executing attribute read spell on Tuya device a4:c1:38:8e:bf:be:09:0e
   10:54:32  [0xAC57:1:0x0000] Sending request: Read_Attributes(attribute_ids=[4, 0, 1, 5, 7, 65534])
   ```
-  (zweimal, 10:54:32 und 10:54:46). **Der Attribut-Lese-Spruch feuerte also — mit genau den sechs
-  Attributen, die der Test verlangt — aber `Executing data query spell` fehlt vollständig.** Damit ist
-  belegt: die Geräteklasse **war** enchanted, hatte aber die **Standardwerte** (`read_attr_spell=True`,
-  `data_query_spell=False`). **Mein `.tuya_enchantment(data_query_spell=True)` an erster Stelle der
-  Kette hat also nicht gegriffen** — der Verdacht zur Position war richtig, nicht bloß Vorsicht.
-  **Zweiter, wichtiger Befund: die Gerätekonfiguration läuft NICHT nur beim Anlernen.** Sie lief um
-  **10:54** (nach dem Neustart um 10:47), sobald das Ventil erreichbar war, und ZHA wendet dabei
-  `applying quirks custom device configuration` an. **Folge: mit der korrigierten Datei genügt ein
-  Neustart — die Konfiguration (und damit der Datenabruf) kommt nach, wenn das Ventil wach ist. Ein
-  Neuanlernen ist nicht mehr zwingend.**
-  **Beweis für den nächsten Durchlauf:** die Zeile `Executing data query spell on Tuya device
-  `a4:c1:38:8e:bf:be:09:0e` muss dann im Protokoll stehen.
-* **ES FUNKTIONIERT (26.09., 11:03–11:06) — der Datenabruf-Spruch war die Lösung.** Mit der
-  korrigierten Datei + Neustart füllten sich die Entitäten:
+  (twice, 10:54:32 and 10:54:46). **So the attribute-read spell fired — with exactly the six attributes
+  the test requires — but `Executing data query spell` is completely missing.** This proves: the device
+  class **was** enchanted, but had the **defaults** (`read_attr_spell=True`, `data_query_spell=False`).
+  **So my `.tuya_enchantment(data_query_spell=True)` at the first position in the chain did not take
+  effect** — the suspicion about the position was right, not merely caution.
+  **Second, important finding: device configuration does NOT run only during pairing.** It ran at
+  **10:54** (after the restart at 10:47), as soon as the valve was reachable, and ZHA applies
+  `applying quirks custom device configuration` in the process. **Consequence: with the corrected file
+  a restart suffices — the configuration (and thus the data query) follows once the valve is awake.
+  Re-pairing is no longer mandatory.**
+  **Proof for the next run:** the line `Executing data query spell on Tuya device
+  `a4:c1:38:8e:bf:be:09:0e` must then appear in the log.
+* **IT WORKS (26.09., 11:03–11:06) — the data-query spell was the solution.** With the corrected file
+  + restart the entities filled in:
   ```
-  11:02:59  state=unknown   soll=None  ist=22.0            (Beginn der Werte)
+  11:02:59  state=unknown   soll=None  ist=22.0            (start of the values)
   11:03:00  state=heat_cool soll=None  ist=22.0  action=heating
   11:05:24  state=heat_cool soll=None  ist=25.0  action=heating
   ```
-  **Gegentest des Nutzers:** er hat das Ventil **angepustet** → Display und HA zeigen beide den
-  neuen Wert (22 → 25). Das beweist **Datenpunkt 5 (Ist-Temperatur) einschließlich Umrechnung**.
-  Weitere laufende Entitäten: `kindersicherung` = off, `frostschutz` = off, `hlk_aktion` = heating.
-  **Noch offen: der Sollwert (`soll = None`).** Ein Schreibbefehl von HA aus (11:07, `set_temperature
-  17.0`, Dienst meldet ok) war nach 90 s noch nicht angekommen — erwartbar, das Gerät schläft und
-  nimmt Befehle beim nächsten Wachmoment an. **Zu prüfen: ob das Display danach kurz 17 zeigt.**
-  **Fund vom Display-Foto:** neben „24" ist ein **Schlüssel-Symbol** zu sehen — die **Kindersicherung
-  ist aktiv**. **KORRIGIERT (11:11 — gemessen, nicht geschlossen): die Zuordnung ist NICHT invertiert.**
-  Der Verlauf der Entität zeigt `on` um **11:03:00** — exakt als das Schlüssel-Symbol im Display stand,
-  und zwar als **vom Gerät gemeldete** Änderung (nicht als geschriebener Wert). Mein Quirk bildet
-  DP 7 also **richtig** ab; `on` = gesperrt. Meine frühere Notiz („DP 7 ist invertiert, kleiner
-  Korrekturbedarf") war eine **Fehlschlussfolgerung aus dem z2m-Converter** — dessen
-  `lookup({LOCK: false, UNLOCK: true})` gilt nicht für jedes Gerät dieser Familie. Lehre: die Polarität
-  **immer am Display des Geräts** prüfen, nie am Converter. Fehler des Assistenten: er hat um 11:08:43
-  `switch.turn_on` gesendet und das Ventil damit **gesperrt** statt entsperrt.
-  Nach dem Umschalten des Nutzers auf `off` (11:11:14) noch offen: **zeigt das Display den Schlüssel
-  noch, und wandert ein gedrehter Sollwert nach HA?**
-  Ebenso auf dem Display: Funk-Symbol (verbunden), Hand- und Uhr-Symbol (Bedien-/Zeitprogrammhinweis).
-  **Der Fall ist damit im Kern gelöst**: Fingerprint-Quirk + **`tuya_enchantment(data_query_spell=True)`**
-  an korrekter Stelle in der Kette ist die nachgewiesene Lösung für dieses Ventil.
-* **VOLLSTÄNDIG GELÖST (26.09., 11:28–11:30) — die Betriebsart war der letzte Fehler.** Nach dem
-  Modus-Fix (Datenpunkt 2 nicht mehr auf `SystemMode.Auto`, sondern **fest auf `Heat`**) lief alles:
+  **User's counter-test:** he **breathed on** the valve → display and HA both show the new value
+  (22 → 25). That proves **datapoint 5 (actual temperature) including conversion**. Further running
+  entities: `kindersicherung` = off, `frostschutz` = off, `hlk_aktion` = heating.
+  **Still open: the setpoint (`soll = None`).** A write command from HA (11:07, `set_temperature
+  17.0`, service reports ok) had not yet arrived after 90 s — expectable, the device is asleep and
+  accepts commands at the next awake moment. **To check: whether the display then briefly shows 17.**
+  **Finding from the display photo:** next to "24" a **key symbol** is visible — **the child lock is
+  active**. **CORRECTED (11:11 — measured, not inferred): the mapping is NOT inverted.** The history
+  of the entity shows `on` at **11:03:00** — exactly when the key symbol was on the display, and as a
+  **device-reported** change (not as a written value). So my quirk maps DP 7 **correctly**; `on` =
+  locked. My earlier note ("DP 7 is inverted, minor correction needed") was a **false inference from
+  the z2m converter** — its `lookup({LOCK: false, UNLOCK: true})` does not apply to every device of
+  this family. Lesson: **always** check the polarity **on the device's display**, never on the
+  converter. Assistant's error: at 11:08:43 it sent `switch.turn_on` and thereby **locked** the valve
+  instead of unlocking it.
+  After the user switched to `off` (11:11:14) still open: **does the display still show the key, and
+  does a turned setpoint travel to HA?**
+  Likewise on the display: radio symbol (connected), hand and clock symbol (manual/time-programme
+  indicator).
+  **The case is thus essentially solved**: fingerprint quirk + **`tuya_enchantment(data_query_spell=True)`**
+  at the correct position in the chain is the proven solution for this valve.
+* **FULLY SOLVED (26.09., 11:28–11:30) — the operating mode was the last error.** After the mode fix
+  (datapoint 2 no longer on `SystemMode.Auto`, but **fixed on `Heat`**) everything ran:
   ```
-  11:24:04  Neustart (Verbindung weg)
-  11:24:37  climate=heat_cool  soll=None   ← alte Datei noch aktiv
-  11:28:22  climate=heat       soll=19.5   ← ★ Fix greift: Modus heat, Sollwert SICHTBAR
-  11:28:37  climate=heat       soll=14.5   ← Sollwert wandert (Gerätedreh)
-  11:29:34  Schreibtest aus HA: set_temperature 18.0 -> ok
-  11:29:49  climate=heat       soll=18.0   ← ★ Schreibbefehl ANGEKOMMEN und geblieben
+  11:24:04  Restart (connection gone)
+  11:24:37  climate=heat_cool  soll=None   ← old file still active
+  11:28:22  climate=heat       soll=19.5   ← ★ fix takes effect: mode heat, setpoint VISIBLE
+  11:28:37  climate=heat       soll=14.5   ← setpoint moves (device turn)
+  11:29:34  Write test from HA: set_temperature 18.0 -> ok
+  11:29:49  climate=heat       soll=18.0   ← ★ write command ARRIVED and stayed
   ```
-  **Diagnose-Korrektur zum eigenen Vorgehen:** das wiederholte „soll = None" war ein **Messfehler**.
-  Gelesen wurde nur `attributes.temperature`; bei der Betriebsart `heat_cool` (Automatik) ist dieses
-  Feld bei einer Bereichs-Entität **immer leer**, der Wert liegt in `target_temp_low`. Der Sollwert
-  war also **nie verloren** — nur unsichtbar. **Regel: bei einer `climate`-Entität immer auch
-  `target_temp_low`/`target_temp_high` lesen, nicht nur `temperature`.**
-  Belege aus der ZHA-Diagnosedatei des Nutzers (`...TZE284_noixx2uz_TS0601_5bc08943e.json`):
-  * `occupied_heating_setpoint = 1700` im Thermostat-Cluster = **17,0 °C**, also der echte Sollwert.
-  * `ctrl_sequence_of_oper = 2` = **nur Heizen** — die „Auto"-Zuordnung widersprach dem Gerät.
-  * `child_lock` = Cluster-Attribut **`0xef07`** → **Datenpunkt 7** (bestätigt, `inverted: false`).
-  * `frost_protection` = Cluster-Attribut **`0xef24`** → **Datenpunkt 36** (bestätigt).
-  **Merkregel für künftige Rate-Datenpunkte: Attribut = `0xEF00` + Datenpunkt-Nummer.**
-  Dauerhaft leere Entitäten (Gerät sendet diese DPs nicht): `pi_heating_demand`,
-  `setpoint_change_source`, `setpoint_change_source_timestamp` — nur kosmetisch.
-* **SELBST GEFUNDENER ZUORDNUNGSFEHLER (26.09., 11:48) — `running_state` war invertiert.** Der Nutzer
-  fragte, warum die Entität „Heizbetrieb" meldet, wenn Soll 11,4 und Ist 23 — richtige Frage, sie
-  deckte einen Fehler auf. Verlauf als Beweis:
+  **Diagnosis correction to my own approach:** the repeated "soll = None" was a **measurement error**.
+  Only `attributes.temperature` was read; in the operating mode `heat_cool` (automatic) this field is
+  **always empty** for a range entity, the value lives in `target_temp_low`. So the setpoint was
+  **never lost** — merely invisible. **Rule: for a `climate` entity always also read
+  `target_temp_low`/`target_temp_high`, not just `temperature`.**
+  Evidence from the user's ZHA diagnostics file (`...TZE284_noixx2uz_TS0601_5bc08943e.json`):
+  * `occupied_heating_setpoint = 1700` in the thermostat cluster = **17.0 °C**, so the real setpoint.
+  * `ctrl_sequence_of_oper = 2` = **heating only** — the "Auto" mapping contradicted the device.
+  * `child_lock` = cluster attribute **`0xef07`** → **datapoint 7** (confirmed, `inverted: false`).
+  * `frost_protection` = cluster attribute **`0xef24`** → **datapoint 36** (confirmed).
+  **Mnemonic for future guessed datapoints: attribute = `0xEF00` + datapoint number.**
+  Permanently empty entities (device does not send these DPs): `pi_heating_demand`,
+  `setpoint_change_source`, `setpoint_change_source_timestamp` — cosmetic only.
+* **SELF-FOUND MAPPING ERROR (26.09., 11:48) — `running_state` was inverted.** The user asked why the
+  entity reports "heating mode" when setpoint is 11.4 and actual is 23 — a correct question, it
+  uncovered an error. History as proof:
   ```
-  11:40:36  soll=35,0  ist=22,0  action=idle      ← 35 über 22, müsste HEIZEN sein
-  11:46:06  soll=11,4  ist=23,0  action=heating   ← 11,4 unter 23, müsste LEERLAUF sein
+  11:40:36  soll=35.0  ist=22.0  action=idle      ← 35 above 22, should be HEATING
+  11:46:06  soll=11.4  ist=23.0  action=heating   ← 11.4 below 23, should be IDLE
   ```
-  Ursache: **die Geschwister-Familie `tuya_trv.py` enthält für Datenpunkt 3 BEIDE Varianten** —
-  zwei Fingerprints nutzen `Heat_State_On if x`, zwei nutzen `if not x`. Kopiert wurde die
-  **invertierte**; korrekt ist `if x` (bestätigt durch die beobachtete Korrelation). Geändert in
-  `local-tools/ts0601_trv_noixx2uz.py` (Zeile 46, ein Wort).
-  **Wichtig:** `hvac_action` wird **nicht** von HA berechnet, sondern ist der vom Gerät gemeldete
-  Ventilzustand (DP 3). HA kann daher nicht „von selbst" auf Leerlauf gehen — es zeigt, was das
-  Ventil behauptet.
-  **Lehre (als Regel 10 in der Skill-Referenz):** aus einer Familie nie die Variante übernehmen, die
-  gerade im Blick ist, sondern gegen die **beobachtete Korrelation** prüfen.
-* **DURCHBRUCH ZUR SCHREIBRICHTUNG (26.09., 11:44–11:49) — die Kindersicherung blockiert fremde
-  Schreibbefehle.** Der Nutzer formulierte es selbst: „die Übertragung TRV → HA klappt super, aber
-  andersrum scheint es zu stocken" und „ich MUSS erst Kindersicherung ausmachen und dann drehen".
-  Ein Schreibtest **bei entsperrtem Ventil** blieb stehen:
+  Cause: **the sibling family `tuya_trv.py` contains BOTH variants for datapoint 3** — two fingerprints
+  use `Heat_State_On if x`, two use `if not x`. The **inverted** one was copied; correct is `if x`
+  (confirmed by the observed correlation). Changed in `local-tools/ts0601_trv_noixx2uz.py` (line 46,
+  one word).
+  **Important:** `hvac_action` is **not** calculated by HA, but is the valve state reported by the
+  device (DP 3). HA therefore cannot go to idle "by itself" — it shows what the valve claims.
+  **Lesson (as rule 10 in the skill reference):** never adopt from a family the variant that happens
+  to be in view, but check against the **observed correlation**.
+* **BREAKTHROUGH ON THE WRITE DIRECTION (26.09., 11:44–11:49) — the child lock blocks external write
+  commands.** The user put it himself: "die Übertragung TRV → HA klappt super, aber andersrum scheint
+  es zu stocken" (the transfer TRV → HA works great, but the other way round seems to stall) and
+  "ich MUSS erst Kindersicherung ausmachen und dann drehen" (I MUST first turn the child lock off and
+  then turn). A write test **with the valve unlocked** held:
   ```
-  11:44:38  vorher SOLL=35.0
+  11:44:38  before SOLL=35.0
   set_temperature 11.4 -> ok
   +20s … +80s   SOLL=11.4  action=idle
-  +100s … +240s SOLL=11.4  action=heating   ← 4 Minuten stabil, KEIN Rückfall
+  +100s … +240s SOLL=11.4  action=heating   ← 4 minutes stable, NO fallback
   ```
-  Vorher (bei gesperrtem Ventil) kippte jeder Schreibwert nach ~70 s auf den Gerätewert zurück. Das
-  Muster „Wert erscheint in HA, verschwindet beim nächsten Gerätebericht" ist damit die **Sperre**,
-  nicht eine falsche Adresse. **Aber:** die Trennung ist noch nicht sauber, weil nicht protokolliert
-  ist, ob das Ventil im Moment jedes Fehlversuchs gesperrt war. **Sauberer Test:** Nutzer entsperrt
-  am Gerät, fasst es **nicht** mehr an, dann schreiben; danach zusätzlich den `child_lock`-Schalter
-  aus HA und am Display prüfen, ob **HA überhaupt entsperren kann** (nach dem `turn_on` um 11:08:43
-  musste er trotzdem physisch lange drücken). **Das ist die Kernfrage für die Fenster-Automatik**:
-  wenn HA nur sperren, aber nicht entsperren kann, braucht der Ablauf „entsperren → Wert → sperren"
-  einen anderen Weg.
-  Nebenbefund aus demselben Test: der Ventilmotor braucht ~100 s, bis `running_state` von „heizt" auf
-  „Leerlauf" umspringt — die Verzögerung ist Mechanik, kein Fehler.
-* **ZEITFENSTER BESTÄTIGT (26.09., 11:52–12:00) — Schreibbefehle greifen nur kurz nach dem Entsperren.**
-  Zwei Schreibbefehle im Abstand von vier Minuten, dazwischen kein Eingriff am Gerät:
+  Previously (with the valve locked) every written value tipped back to the device value after ~70 s.
+  The pattern "value appears in HA, disappears on the next device report" is therefore the **lock**,
+  not a wrong address. **But:** the separation is not yet clean, because it is not logged whether the
+  valve was locked at the moment of each failed attempt. **Cleaner test:** user unlocks on the device,
+  does **not** touch it again, then writes; afterwards additionally check the `child_lock` switch from
+  HA and on the display whether **HA can unlock at all** (after the `turn_on` at 11:08:43 he still had
+  to physically press and hold). **That is the key question for the window automation**: if HA can
+  only lock but not unlock, the sequence "unlock → value → lock" needs another route.
+  Side finding from the same test: the valve motor needs ~100 s until `running_state` flips from
+  "heating" to "idle" — the delay is mechanics, not a fault.
+* **TIME WINDOW CONFIRMED (26.09., 11:52–12:00) — write commands only take effect shortly after
+  unlocking.** Two write commands four minutes apart, no intervention on the device in between:
   ```
-  11:52  set_temperature 11.4   ->  120 s beobachtet, Wert blieb stehen (Ventil meldete nichts)
-  11:56:35  set_temperature 18.0 ->  +0…+20 s SOLL=18,0, dann +30 s SOLL=11,4 und dabei blieb es
-                                     (170 s beobachtet, keine weitere Änderung)
+  11:52  set_temperature 11.4   ->  120 s observed, value held (valve reported nothing)
+  11:56:35  set_temperature 18.0 ->  +0…+20 s SOLL=18.0, then +30 s SOLL=11.4 and it stayed there
+                                     (170 s observed, no further change)
   ```
-  **Der Rücksprung auf 11,4 ist der Schlüssel:** das Gerät ist auf den Wert zurückgefallen, den es
-  zuletzt **angenommen** hatte. Damit ist belegt: **11,4 kam an** (kein HA-Echo — der Wert kam *nach*
-  dem 18,0 zurück), **18,0 wurde abgelehnt**. Das Fenster war zwischen 11:52 und 11:56 bereits
-  geschlossen. **Signatur für künftige Tests:** ein Rücksprung benennt den zuletzt erfolgreich
-  geschriebenen Wert — nicht einen Zufallswert.
-  **Und:** die Anzeige `switch.…_kindersicherung` stand während des ganzen Tests auf `off`, obwohl das
-  Ventil sperrt. **Der Schalter sagt nichts über die echte Sperre.**
-  **Offene Kernfrage:** kann Home Assistant das Ventil überhaupt entsperren (Schalter) oder nur der
-  lange Druck am Gerät? Nicht beantwortet. Eigenes Ergebnis: mein `switch.turn_on` um 11:08:43 hat
-  das Ventil **gesperrt** (nicht entsperrt), der Nutzer musste trotzdem physisch lange drücken.
-  **Nächster Schritt (Nutzer):** Handbuch — gibt es einen **Dauermodus** für die Kindersicherung?
-  Ohne Dauermodus ist „Fenster auf → Heizung zu" über diesen Weg nicht automatisierbar.
-* **KORREKTUR IST LIVE (26.09., ~11:57) — bewiesen durch einen Wechsel bei *gleichem* Datenpunkt.**
-  Der breite Mithörer zeigt: vor dem Einspielen stand bei `soll=35,0 / ist=22,0` die Aktion `idle`,
-  nach dem Neustart (11:52:53) steht bei `soll=11,4 / ist=23,0` die Aktion `heating` — **umgekehrt zur
-  alten Zuordnung bei derselben Datenpunkt-Bedeutung**. Die Entität deutet den Gerätewert jetzt also
-  anders, d. h. **die korrigierte Datei ist geladen und die Gerätekonfiguration ist durchgelaufen**.
-  Kein weiterer Neustart nötig.
-  Aktueller Gerätezustand: `running_state` = „Ventil offen" (`heating`), obwohl der Sollwert 11,4
-  unter der Raumtemperatur 23 liegt. Zwei mögliche Erklärungen — Ventil mechanisch noch offen, oder
-  das Gerät meldet seinen eigenen Zustand unabhängig vom Sollwert. Nur am Heizkörper prüfbar.
-  Nebenbefund: die Entität `sensor.…_hlk_aktion` wechselt synchron mit `hvac_action` — beide bilden
-  denselben Datenpunkt 3 ab.
-* **KINDERSICHERUNG GELÖST — dauerhaft aus (26.09., ~12:05, per Handbuch).** Der Nutzer hat im
-  Handbuch den **Dauermodus** gefunden: **CL ist jetzt dauerhaft aus, Drehen geht sofort.** Damit ist
-  der Blocker für „Fenster auf → Heizung zu" weg — Schreibbefehle sollten jetzt jederzeit greifen.
-  **Aber direkt danach klemmt die *andere* Richtung:** der Nutzer stellt **20 °C** am Gerät ein und
-  **HA zeigt weiter 11,4**. Die Entität wurde zuletzt **11:53:17** aktualisiert — beim Neustart bzw.
-  der Gerätekonfiguration — und hat danach **13 Minuten lang nichts gemeldet**, obwohl am Gerät
-  gedreht wurde. Vor dem Neustart kamen alle Drehungen innerhalb von Sekunden an.
-  **Untersuchen:** sendet das Gerät nicht mehr (langer Schlaf nach der Konfiguration? Zauberspruch
-  wirkt nur einmal?), oder sendet es und HA nimmt es nicht an (Zuordnung nach der Änderung)?
-  Beobachtung läuft; falls es schweigt, klärt das Protokoll die Frage (`0xef00`-Zeilen).
-  **Wichtig für die Automatik:** die *Schreibrichtung* ist jetzt frei, aber die *Leserichtung* muss
-  zuverlässig sein, sonst regelt der Controller auf veraltete Werte.
-* **BATTERIE-DATENPUNKT + NEUANLERNEN (26.09., ~12:15–12:25).** Im Protokoll tauchte als **einziger
-  echter Messwert** des Ventils **Datenpunkt 6 = 43** auf (Batteriestand). Der Quirk wurde um
-  `.tuya_battery(dp_id=6)` ergänzt; die Datei bildet jetzt **sieben** Datenpunkte ab:
-  **2, 3, 4, 5, 6, 7, 36** (Syntax geprüft, Kette `adds` → `tuya_enchantment` → `skip_configuration`
-  → `add_to_registry` korrekt).
-  **Geplanter Ablauf des Nutzers (bewusst in dieser Reihenfolge):** Datei ersetzen → **HA-Neustart**
-  (damit der Quirk geladen ist) → Ventil in ZHA **entfernen** → **neu anlernen**.
-  **Zweck:** nicht der Quirk (der ist längst drin), sondern die **Gerätekonfiguration** — und mit ihr
-  der **Datenabruf-Zauberspruch**, der seit dem Neustart um 11:53 nicht mehr geworfen wurde.
-  **Erwartung nach dem Anlernen:** Sollwert (12/13), Ist ≈ 23 °C, Betriebsart `heat`, Aktion `idle`,
-  Batterie 43 %.
-  **Offen bleibt** die 0,5-Schritt-Theorie des Nutzers (das Gerät arbeitet in halben Grad; 11,4 könnte
-  unzulässig sein). **Weder bestätigt noch widerlegt** — solange das Ventil schweigt, kann ein
-  „stehender" Wert nichts beweisen (Regel 11). Der Test gelingt erst, wenn das Gerät wieder meldet.
-  **Nebenbefund:** Der 13,0-Schreibbefehl hielt 150 s ohne Rückfall — bei **schweigendem** Gerät ist
-  das **kein** Erfolgsnachweis.
-  **Merke:** HA-Protokolldateien sind **UTC** benannt (`10-09-17` = 12:09 Berlin).
-* **✅ GELÖST (26.09., 12:27) — Neuanlernen hat den Zauberspruch neu geworfen, alles läuft.**
-  Bestandsaufnahme **nach** dem Re-Pair:
+  **The fall-back to 11.4 is the key:** the device fell back to the value it had last **accepted**.
+  This proves: **11.4 arrived** (no HA echo — the value came back *after* the 18.0), **18.0 was
+  rejected**. The window was already closed between 11:52 and 11:56. **Signature for future tests:**
+  a fall-back names the last successfully written value — not a random value.
+  **And:** the `switch.…_kindersicherung` indicator read `off` during the whole test, although the
+  valve was locking. **The switch says nothing about the real lock.**
+  **Open key question:** can Home Assistant unlock the valve at all (switch), or only the long press
+  on the device? Not answered. Own result: my `switch.turn_on` at 11:08:43 **locked** the valve (did
+  not unlock it), the user still had to physically press and hold.
+  **Next step (user):** manual — is there a **permanent mode** for the child lock? Without a permanent
+  mode, "window open → heating off" cannot be automated via this route.
+* **CORRECTION IS LIVE (2026-09-26, ~11:57) — proven by a change at the *same* data point.**
+  The broad listener shows: before the rollout, at `soll=35.0 / ist=22.0` the action was `idle`,
+  after the restart (11:52:53), at `soll=11.4 / ist=23.0` the action is `heating` — **the reverse of
+  the old mapping for the same data-point meaning**. The entity now therefore interprets the device
+  value differently, i.e. **the corrected file is loaded and the device configuration has run through**.
+  No further restart needed.
+  Current device state: `running_state` = „Ventil offen" (`heating`), although the setpoint 11.4
+  lies below the room temperature 23. Two possible explanations — valve still mechanically open, or
+  the device reports its own state independently of the setpoint. Only checkable at the radiator.
+  Incidental finding: the entity `sensor.…_hlk_aktion` changes synchronously with `hvac_action` — both
+  map the same data point 3.
+* **CHILD LOCK SOLVED — permanently off (2026-09-26, ~12:05, via manual).** The user found the
+  **permanent mode** in the manual: **CL is now permanently off, turning works immediately.** That
+  removes the blocker for "window open → heating off" — write commands should now take effect at any
+  time.
+  **But immediately afterwards the *other* direction jams:** the user sets **20 °C** on the device and
+  **HA keeps showing 11.4**. The entity was last updated at **11:53:17** — on the restart or the
+  device configuration — and has since reported **nothing for 13 minutes**, although the device
+  was turned. Before the restart all turns arrived within seconds.
+  **To investigate:** is the device no longer sending (long sleep after the configuration? does the
+  spell work only once?), or is it sending and HA not accepting it (mapping after the change)?
+  Observation is running; if it stays silent, the log settles the question (`0xef00` lines).
+  **Important for the automation:** the *write direction* is now free, but the *read direction* must
+  be reliable, otherwise the controller regulates on stale values.
+* **BATTERY DATA POINT + RE-PAIRING (2026-09-26, ~12:15–12:25).** In the log, **data point 6 = 43**
+  appeared as the **only real measured value** of the valve (battery level). The quirk was extended
+  with `.tuya_battery(dp_id=6)`; the file now maps **seven** data points:
+  **2, 3, 4, 5, 6, 7, 36** (syntax checked, chain `adds` → `tuya_enchantment` → `skip_configuration`
+  → `add_to_registry` correct).
+  **The user's planned sequence (deliberately in this order):** replace the file → **HA restart**
+  (so the quirk is loaded) → **remove** the valve in ZHA → **re-pair**.
+  **Purpose:** not the quirk (that has long been in), but the **device configuration** — and with it
+  the **data-retrieval spell**, which has not been cast since the restart around 11:53.
+  **Expectation after re-pairing:** setpoint (12/13), actual ≈ 23 °C, mode `heat`, action `idle`,
+  battery 43 %.
+  **Still open** is the user's 0.5-step theory (the device works in half degrees; 11.4 could
+  be invalid). **Neither confirmed nor refuted** — as long as the valve stays silent, a
+  "standing" value can prove nothing (rule 11). The test succeeds only once the device reports again.
+  **Incidental finding:** the 13.0 write command held for 150 s without reverting — with a **silent**
+  device that is **no** proof of success.
+  **Note:** HA log files are named in **UTC** (`10-09-17` = 12:09 Berlin).
+* **✅ SOLVED (2026-09-26, 12:27) — re-pairing cast the spell again, everything works.**
+  Inventory **after** the Re-Pair:
   ```
-  climate:  modus=heat  SOLL=5,0 → (Schreibbefehl 11,4) → Gerät zeigt 11  ist=24,0  action=idle  sperre=off
-  neu:      sensor.…_z_batterie = 100.0   (der ergänzte Datenpunkt 6)
+  climate:  modus=heat  SOLL=5.0 → (write command 11.4) → device shows 11  ist=24.0  action=idle  sperre=off
+  new:      sensor.…_z_batterie = 100.0   (the added data point 6)
   ```
-  **Der Nutzer hat am Display bestätigt, dass der Wert ankam** („du hast es auf 11 gestellt bekommen,
-  war vorher 5"). Damit ist die **Schreibrichtung** erstmals *am Gerät* bewiesen — nicht nur als
-  Anzeige in HA.
-  **Seine 0,5-Schritt-Theorie ist BESTÄTIGT:** geschrieben 11,4 → das Gerät zeigt **11** und rundet
-  auf seine Stufen. Krumme Werte sind also **nicht** falsch, sie werden gerundet.
-  **Und die `running_state`-Korrektur wirkt:** bei Soll 11 < Ist 24 meldet die Aktion **`idle`** —
-  vorher hätte die invertierte Zuordnung `heating` gesagt. Genau die Logik, die der Nutzer gefordert
-  hatte.
-  **Vollständiger Endstand:** Betriebsart `heat`, Soll/Batterie/Ist werden übertragen, Schreiben
-  funktioniert, Kindersicherung dauerhaft aus, Batterie 100 %.
-  **Weg für die Fenster-Automatik:** ein Sperr-Schalter ist **nicht** nötig — es genügt, beim
-  Fensteröffnen einen niedrigen Sollwert (z. B. 5 °C) zu schreiben. Das ist jetzt belegt.
-  **Was das Neuanlernen bewirkt hat:** die Datei war längst richtig; gefehlt hat allein die
-  **Gerätekonfiguration**, die den Datenabruf-Zauberspruch wirft. Merke: **Ein HA-Neustart löst sie
-  nicht aus, ein Re-Pair schon.**
-* **✅ KOMPLETT (26.09., 12:34) — halbe Grad bestätigt, Kindersicherung stört den Funkweg nicht.**
-  Der Nutzer hat am Display geprüft: **`set_temperature 19.5` → Display zeigt `19,5`**.
-  * **Das Gerät arbeitet in *halben* Grad.** Geschrieben 11,4 → Display zeigte **11** (krumme Werte
-    werden *gerundet*), geschrieben 19,5 → Display zeigt **19,5**. Meine frühere Behauptung
-    „ganze Grad" war aus *einem* gerundeten Wert geschlossen — zu wenig.
-  * **Die Kindersicherung blockiert nur die *Tasten* am Gehäuse, nicht den Funkweg.** Bei *aktiver*
-    Sperre (Schlüssel im Display sichtbar) hielten 14,0 und 19,5 jeweils minutenlang, und 19,5 kam
-    **am Display** an. Das ist genau das gewünschte Verhalten: **Kind kommt nicht dran, HA schon.**
-    Meine frühere Ableitung („die Sperre verwirft Schreibbefehle") stützte sich auf Rücksprünge, die
-    auch vom *Gerätebericht* stammen können — **nicht belastbar**.
-  * **Wichtig fürs Wiederholen:** Ein **Re-Pair schaltet die Kindersicherung wieder ein**
-    (im Mithörer um **12:24:39**). Nach jedem Neuanlernen muss der Dauermodus erneut gesetzt werden.
-  * **Der HA-Schalter `…_kindersicherung` zeigt den echten Zustand nicht** — er stand durchgehend auf
-    `off`, während das Gerät sperrte. Nur das Display ist maßgeblich.
-  **Endstand:** Betriebsart `heat`, Sollwert schreib- und lesbar (halbe Grad), Ist-Temperatur,
-  Ventilzustand korrekt, Batterie %, Kindersicherung an und trotzdem ferngesteuert. Fall geschlossen.
-* **FENSTER-AUTOMATIK SCHLAFZIMMER GEBAUT UND BEIDE RICHTUNGEN BELEGT (26.09., 12:47–12:52).**
-  Neues Ventil ist für das **Schlafzimmer Eltern** bestimmt und wurde dorthin umgezogen.
-  * **Fensterkontakt:** `binary_sensor.aqarasensorsztur_offnung` („Schlafzimmer Fenster groß").
-    Der Nutzer hat ihn ausdrücklich bestätigt.
-  * **Neue Automatik:** `automation.schlafzimmer_trv_fenster_auf_zu` (id `1790419671862`),
-    Auslöser Fenster `on`/`off` **jeweils 15 s**, Aktionen `climate.set_temperature` 8 bzw. 20.
-  * **Gemessene Läufe:** 12:48:58 auf → 12:49:13 gefeuert → SOLL 8,0; 12:51:27 zu → 12:51:42
-    gefeuert → SOLL 20,0. **Jeweils exakt 15 s nach dem Zustandswechsel.**
-  * **Einschwingzeit wirkt:** schnelles Auf-Zu-Auf-Zu (12:48:49–12:48:52) löste **nichts** aus,
-    ebenso ein 2-Sekunden-Öffnen um 12:46. Gewollt: schützt Motor und Batterie.
-  * **NICHT ANGETASTET:** `automation.trv_kellerparty_fenster_auf_heizung_zu` (id `1772474316617`,
-    Auslöser `binary_sensor.fenstersensorkellerparty_offnung`, steuert `climate.sonoff_trvzb_thermostat`)
-    — anderes Zimmer, anderes Fenster, anderes Ventil. Nachkontrolle: unverändert, steuert weiter SONOFF.
-  * **Umbenennung (WebSocket-API, die REST-API liefert für die Registries 404):**
-    Gerät `5bc08943e7c3a0290c370097e41e7edf` → `name_by_user` „Schlafzimmer Eltern", Bereich
-    `schlafzimmer`. Entity-IDs umgezogen: `climate.schlafzimmer_eltern_thermostat`,
+  **The user confirmed at the display that the value arrived** ("du hast es auf 11 gestellt bekommen,
+  war vorher 5" — you managed to set it to 11, it was 5 before). This proves the **write direction**
+  *at the device* for the first time — not merely as a display in HA.
+  **His 0.5-step theory is CONFIRMED:** written 11.4 → the device shows **11** and rounds
+  to its steps. Odd values are therefore **not** wrong, they are rounded.
+  **And the `running_state` correction works:** with SOLL 11 < Ist 24 the action reports **`idle`** —
+  previously the inverted mapping would have said `heating`. Exactly the logic the user had
+  demanded.
+  **Complete final state:** mode `heat`, setpoint/battery/actual are transmitted, writing
+  works, child lock permanently off, battery 100 %.
+  **Path for the window automation:** a lock switch is **not** necessary — it is enough to write a
+  low setpoint (e.g. 5 °C) on window opening. That is now evidenced.
+  **What the re-pairing achieved:** the file had long been correct; all that was missing was the
+  **device configuration**, which casts the data-retrieval spell. Note: **An HA restart does not
+  trigger it, a Re-Pair does.**
+* **✅ COMPLETE (2026-09-26, 12:34) — half degrees confirmed, child lock does not disturb the radio path.**
+  The user checked at the display: **`set_temperature 19.5` → display shows `19.5`**.
+  * **The device works in *half* degrees.** Written 11.4 → the display showed **11** (odd values
+    are *rounded*), written 19.5 → the display shows **19.5**. My earlier claim
+    "ganze Grad" (whole degrees) was concluded from *one* rounded value — too little.
+  * **The child lock blocks only the *buttons* on the housing, not the radio path.** With an *active*
+    lock (key visible in the display), 14.0 and 19.5 each held for minutes, and 19.5 arrived
+    **at the display**. That is exactly the desired behaviour: **the child cannot get at it, HA can.**
+    My earlier deduction ("die Sperre verwirft Schreibbefehle" — the lock discards write commands)
+    relied on reverts that can also come from the *device report* — **not reliable**.
+  * **Important for repeating:** a **Re-Pair switches the child lock back on**
+    (in the listener around **12:24:39**). After every re-pairing the permanent mode must be set again.
+  * **The HA switch `…_kindersicherung` does not show the real state** — it stood continuously at
+    `off` while the device was locked. Only the display is authoritative.
+  **Final state:** mode `heat`, setpoint writable and readable (half degrees), actual temperature,
+  valve state correct, battery %, child lock on and still remote-controlled. Case closed.
+* **BEDROOM WINDOW AUTOMATION BUILT AND BOTH DIRECTIONS EVIDENCED (2026-09-26, 12:47–12:52).**
+  The new valve is intended for the **Schlafzimmer Eltern** (parents' bedroom) and was moved there.
+  * **Window contact:** `binary_sensor.aqarasensorsztur_offnung` („Schlafzimmer Fenster groß").
+    The user expressly confirmed it.
+  * **New automation:** `automation.schlafzimmer_trv_fenster_auf_zu` (id `1790419671862`),
+    trigger window `on`/`off` **each 15 s**, actions `climate.set_temperature` 8 and 20 respectively.
+  * **Measured runs:** 12:48:58 open → 12:49:13 fired → SOLL 8.0; 12:51:27 closed → 12:51:42
+    fired → SOLL 20.0. **Each exactly 15 s after the state change.**
+  * **Settling time works:** fast open-close-open-close (12:48:49–12:48:52) triggered **nothing**,
+    likewise a 2-second opening at 12:46. Intended: protects motor and battery.
+  * **NOT TOUCHED:** `automation.trv_kellerparty_fenster_auf_heizung_zu` (id `1772474316617`,
+    trigger `binary_sensor.fenstersensorkellerparty_offnung`, controls `climate.sonoff_trvzb_thermostat`)
+    — different room, different window, different valve. Follow-up check: unchanged, still controls SONOFF.
+  * **Renaming (WebSocket API, the REST API returns 404 for the registries):**
+    device `5bc08943e7c3a0290c370097e41e7edf` → `name_by_user` „Schlafzimmer Eltern", area
+    `schlafzimmer`. Entity IDs migrated: `climate.schlafzimmer_eltern_thermostat`,
     `switch.schlafzimmer_eltern_kindersicherung`, `…_frostschutz`, `sensor.…_batterie`,
     `…_hlk_aktion`, `update.…_firmware`, `sensor.…_rssi`, `…_lqi`.
-    **Die Anzeigenamen folgen automatisch dem Gerätenamen** (die Entitäten hatten `name = None`).
-    **Vorher geprüft:** kein Dashboard nannte das Ventil, nur die eigene Automatik hing daran (angepasst).
-    **Merke:** Ein Geräte-Rename ändert alle Anzeigen auf einmal, die Entity-IDs müssen einzeln
-    mitgezogen werden (`config/entity_registry/update`, `new_entity_id`).
-* **SOLAREDGE: NEUER 6-MINUTEN-FEHLER SEIT ~25.09. — NICHT BEI UNS VERURSACHT (27.09.).**
-  Der Nutzer sah Fehler in der **Lade-App**; seine Beobachtung „die Tage davor gab es diesen Rhythmus
-  nicht" ist **belegt**. Auswertung der Logs:
+    **The display names follow the device name automatically** (the entities had `name = None`).
+    **Checked beforehand:** no dashboard named the valve, only its own automation hung on it (adjusted).
+    **Note:** a device rename changes all displays at once, the entity IDs must be
+    carried along individually (`config/entity_registry/update`, `new_entity_id`).
+* **SOLAREDGE: NEW 6-MINUTE ERROR SINCE ~2026-09-25 — NOT CAUSED ON OUR SIDE (2026-09-27).**
+  The user saw errors in the **charging app**; his observation "die Tage davor gab es diesen Rhythmus
+  nicht" (the days before, this rhythm did not exist) is **evidenced**. Evaluation of the logs:
   ```
-  site read failed pro Tag:  25.09. 11   26.09. 21   27.09. 16
-  (davor nur vereinzelte Ausreißer: 12.09. 4 · 17.09. 12 · 20.–24.09. 1–4)
-  Abstände der letzten 12 Fehler: 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24 Minuten
-  Abstände am Anfang:            0, 0, 4, 6917, 0, 0, 0, 0, 1, 0, 4, 20 Minuten  (völlig unregelmäßig)
+  site read failed per day:  2026-09-25 11   2026-09-26 21   2026-09-27 16
+  (before that only isolated outliers: 2026-09-12 4 · 2026-09-17 12 · 2026-09-20–24 1–4)
+  Intervals of the last 12 errors: 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24 minutes
+  Intervals at the start:          0, 0, 4, 6917, 0, 0, 0, 0, 1, 0, 4, 20 minutes  (completely irregular)
   ```
-  **Aus vereinzelten Aussetzern wurde um den 25.09. ein Takt.** Der Fehler trifft **immer**
-  `read 32@40071` (Inverter-Block, Modell 101) — **nie** den Meter. Die App fragt alle 30 s, also
-  scheitert **jeder zwölfte** Versuch; ~0,33 % aller Abfragen.
-  **Eine 30-Minuten-Pause des Proxys (26.09. 22:06–22:36) änderte NICHTS** — danach exakt derselbe
-  6-Minuten-Takt. **Damit sind Überhitzung/Überlastung ausgeschlossen.**
-  **Software ausgeschlossen:** im Projekt wurde um den 25./26.09. nichts geändert (die Commits dieser
-  Tage sind alle Ventil-Dokumentation); die Proxy-Konfiguration zuletzt **20.09. 06:04**; das
-  Abfrageintervall steht unverändert auf `interval_s: 30` (Konfiguration und Beispiel identisch).
-  **Also geräteseitig.** Offen: Firmware-Stand des Wechselrichters, Hinweise im SE-Portal um den 25.09.
-  **Kein Handlungsdruck:** die App verkraftet es (sie verbindet 30 s später neu und läuft weiter), der
-  Meter ist nicht betroffen, der Proxy schreibt weiterhin nichts (`upstream_writes: 0`).
-  Protokollzeile für den Installateur: seit 25.09. liefert der Wechselrichter den Block `32@40071`
-  alle 6 Minuten abgeschnitten (`failed to fill whole buffer`), ohne Lastspitze, nach 30 min Pause
-  unverändert.
-* **SOLAREDGE-FIRMWARE-UPDATE — DATUM GEFUNDEN: 16./17.09.2026 (27.09.).** Der Nutzer ist der
-  Installateur und wusste, dass der Wechselrichter ein Update bekam („aber nicht gestern oder so"),
-  und verwies auf STATE.md bzw. die Sitzungsverläufe. Fund in den Sitzungen:
-  **„The SolarEdge Modbus path is now HEALTHY again (firmware update + Modbus toggle fixed it) after
-  the 2026-09-16/17 wedge"** (`@session:default/20260913_065549_918f4a`) und, einen Tag später,
-  **„inverter map unchanged after the firmware updates, meter block decodes cleanly"**
+  **Out of isolated dropouts, a cadence emerged around 2026-09-25.** The error always hits
+  `read 32@40071` (inverter block, model 101) — **never** the meter. The app polls every 30 s, so
+  **every twelfth** attempt fails; ~0.33 % of all queries.
+  **A 30-minute pause of the proxy (2026-09-26 22:06–22:36) changed NOTHING** — afterwards exactly the
+  same 6-minute cadence. **That rules out overheating/overload.**
+  **Software ruled out:** nothing was changed in the project around 2026-09-25/26 (the commits of
+  those days are all valve documentation); the proxy configuration last on **2026-09-20 06:04**; the
+  polling interval stands unchanged at `interval_s: 30` (configuration and example identical).
+  **So device-side.** Open: the inverter's firmware version, indications in the SE portal around
+  2026-09-25.
+  **No pressure to act:** the app copes with it (it reconnects 30 s later and keeps running), the
+  meter is not affected, the proxy still writes nothing (`upstream_writes: 0`).
+  Log line for the installer: since 2026-09-25 the inverter delivers the block `32@40071`
+  truncated every 6 minutes (`failed to fill whole buffer`), without a load peak, unchanged after a
+  30 min pause.
+* **SOLAREDGE FIRMWARE UPDATE — DATE FOUND: 2026-09-16/17 (2026-09-27).** The user is the
+  installer and knew that the inverter received an update ("aber nicht gestern oder so" — but not
+  yesterday or so), and referred to STATE.md or the session histories. Find in the sessions:
+  **"The SolarEdge Modbus path is now HEALTHY again (firmware update + Modbus toggle fixed it) after
+  the 2026-09-16/17 wedge"** (`@session:default/20260913_065549_918f4a`) and, a day later,
+  **"inverter map unchanged after the firmware updates, meter block decodes cleanly"**
   (`@session:default/20260917_075117_cf75a1`).
   ```
-  16./17.09.  Firmware-Update + Modbus-Toggle  (löste die Störung, HEALTHY again)
-  19.09.      Firmware read-only gelesen: 0004.0025.0015   (Modell SE5000H-RWS00BNO4, SN 740745CE)
-  25.09.      Der 6-Minuten-Fehler-Takt beginnt           <-- 8 Tage SPÄTER
-  27.09.      Firmware unverändert: 0004.0025.0015  (eine Abfrage über den Proxy, ~50 ms)
+  2026-09-16/17  Firmware update + Modbus toggle  (solved the fault, HEALTHY again)
+  2026-09-19     Firmware read read-only: 0004.0025.0015   (model SE5000H-RWS00BNO4, SN 740745CE)
+  2026-09-25     The 6-minute error cadence begins          <-- 8 days LATER
+  2026-09-27     Firmware unchanged: 0004.0025.0015  (one query via the proxy, ~50 ms)
   ```
-  **Ergebnis: Das Update ist nicht die Ursache.** Es liegt acht Tage vor dem Beginn des Takts, und
-  die Version ist bis heute identisch — es gab also auch **kein zweites Update** dazwischen.
-  Bewusst offen: ganz ausschließen lässt sich ein spät wirkender Firmware-Effekt nicht, acht Tage
-  wären dafür aber ungewöhnlich. **Der SunSpec-Identifikationsblock (40004) enthält kein
-  Update-Datum** — das Datum steht nur in SetApp/Portal bzw. in den Sitzungsverläufen.
-  Merke: `session_search` liefert nur bei **einfachen** Suchbegriffen Treffer; lange UND-Ketten
-  (fünf Begriffe) kommen leer zurück, ein einzelnes Wort („Firmware") findet die Stelle sofort.
-* **PV-ZÄHLER-RÄTSEL GELÖST (27.09., 15:26): Die Lade-App rechnet RICHTIG — es sind zwei verschiedene Größen.**
-  Der Nutzer verglich „PV produced today (counter)" (13,59 kWh) mit der SE-App (19,9 kWh) und
-  vermutete einen Fehler. Die SE-App zeigt die **Energiebilanz** des Tages:
+  **Result: the update is not the cause.** It lies eight days before the start of the cadence, and
+  the version is identical to this day — so there was also **no second update** in between.
+  Deliberately left open: a late-acting firmware effect cannot be entirely excluded, eight days
+  would be unusual for that, however. **The SunSpec identification block (40004) contains no
+  update date** — the date appears only in SetApp/portal or in the session histories.
+  Note: `session_search` returns hits only for **simple** search terms; long AND chains
+  (five terms) come back empty, a single word ("Firmware") finds the spot immediately.
+* **PV METER PUZZLE SOLVED (2026-09-27, 15:26): the charging app calculates CORRECTLY — they are two different quantities.**
+  The user compared "PV produced today (counter)" (13.59 kWh) with the SE app (19.9 kWh) and
+  suspected an error. The SE app shows the day's **energy balance**:
   ```
-  Produktion             19,9 kWh
-    Ins Haus              2,08 kWh (11 %)
-    Zur Batterie          6,65 kWh (33 %)
-    Ins Netz             11,2  kWh (56 %)
-  Verbrauch               4,45 kWh
+  Production             19.9 kWh
+    Into house            2.08 kWh (11 %)
+    To battery            6.65 kWh (33 %)
+    To grid              11.2  kWh (56 %)
+  Consumption             4.45 kWh
   ```
-  Der Wechselrichter-Zähler zählt nur, was der Wechselrichter **abgegeben** hat:
-  **2,08 + 11,2 = 13,28 kWh ≈ 13,59 kWh (Lade-App)** — passt auf 0,3 kWh.
-  Die **6,65 kWh, die in die Batterie gingen, sind noch nicht entladen** (Batterie 99 %,
-  Batteriemodus „Time of Use", „Ins Haus 0 kW"). Sie kommen als Ausgangsenergie zurück, sobald die
-  Batterie entlädt — genau das sagt der Tooltip („sie zählt die spätere Akku-Entladung mit").
-  **Zu korrigieren ist nur der Name:** „PV produced today (counter)" ist **nicht** die PV-Erzeugung,
-  sondern der **Ausgang** des Wechselrichters. Der Tooltip vergleicht ihn mit der Monitoring-App —
-  das führt in die Irre, seit eine Batterie im Spiel ist.
-  **Weiterhin offen: der Deye fehlt.** Garage heute 2,7 kWh (SDM-Zähler); die App liest sie
-  (`garage.pv_w` 849 W, `sdm.pv_energy_kwh`, `sdm.last.pv_kwh`) und addiert sie **nicht** auf den
-  PV-Zähler.
-  **Lebensdauer bleibt unterschiedlich:** App 29,36 MWh gegen SE-App 66,5 MWh. Bei 6,59 MWh/Jahr
-  sind das 4,5 gegen 10,1 Jahre — offen, ob in der SE-Summe ein früherer Wechselrichter steckt.
-  **Merke:** Bei einer Anlage mit Batterie ist „Produktion" (PV-Erzeugung) ≠ „Ausgang des
-  Wechselrichters". Die Differenz ist die Batterieladung und holt sich später auf. Eine einzelne
-  Tageszahl ohne diese Aufteilung ist **kein** Fehlerbeweis — die SE-App zeigt die Aufteilung unter
-  „Energiebilanz".
-  (Vorherige Deutung „die App zeigt zu wenig / Register falsch" ist damit **zurückgenommen**.)
-* **ERSTER VOLLER TAG MIT DEM NEUEN FAKTOR (Abschluss 27.09. 24:00 Berlin, gelesen 28.09. früh).**
+  The inverter meter counts only what the inverter **delivered**:
+  **2.08 + 11.2 = 13.28 kWh ≈ 13.59 kWh (charging app)** — matches to within 0.3 kWh.
+  The **6.65 kWh that went into the battery are not yet discharged** (battery 99 %,
+  battery mode „Time of Use", "Into house 0 kW"). They come back as output energy once the
+  battery discharges — exactly what the tooltip says ("sie zählt die spätere Akku-Entladung mit" —
+  it counts the later battery discharge too).
+  **Only the name needs correcting:** "PV produced today (counter)" is **not** the PV generation,
+  but the **output** of the inverter. The tooltip compares it with the monitoring app —
+  that is misleading once a battery is in play.
+  **Still open: the Deye is missing.** Garage today 2.7 kWh (SDM meter); the app reads it
+  (`garage.pv_w` 849 W, `sdm.pv_energy_kwh`, `sdm.last.pv_kwh`) and does **not** add it to the
+  PV meter.
+  **Lifetime remains different:** app 29.36 MWh against SE app 66.5 MWh. At 6.59 MWh/year
+  that is 4.5 against 10.1 years — open whether an earlier inverter is in the SE sum.
+  **Note:** in a plant with a battery, "Production" (PV generation) ≠ "Output of the
+  inverter". The difference is the battery charge and recovers later. A single
+  day figure without this split is **no** proof of an error — the SE app shows the split under
+  "energy balance".
+  (The previous interpretation "die App zeigt zu wenig / Register falsch" (the app shows too little /
+  register wrong) is thereby **withdrawn**.)
+* **FIRST FULL DAY WITH THE NEW FACTOR (completed 2026-09-27 24:00 Berlin, read 2026-09-28 early).**
   ```
-  27.09.  Prognose ganzer Tag              25,913 kWh
-          Ausgang, Integral                18,687 kWh
-          Ausgang, Wechselrichter-Zähler   21,152 kWh
-          Erzeugung (pv_kwh, neu)          22,882 kWh  = Ausgang + Akku +7,983 − 3,789
-          Faktor neu (gegen Erzeugung)      0,883
-          Faktor alt (gegen Ausgang)        0,721      <- was der Faktor vorher gesagt hätte
-          Faktor Array (DC)                 0,73
+  2026-09-27  Forecast whole day               25.913 kWh
+              Output, integral                 18.687 kWh
+              Output, inverter meter           21.152 kWh
+              Generation (pv_kwh, new)         22.882 kWh  = output + battery +7.983 − 3.789
+              Factor new (against generation)  0.883
+              Factor old (against output)      0.721      <- what the factor would have said before
+              Factor array (DC)                0.73
   ```
-  Der **Zähler ist die bessere Quelle**: 21,152 gegen 18,687 aus dem Integral — letzteres verliert
-  jede Minute, in der der Dienst nicht läuft (hier 2,5 kWh).
-  **Nachts läuft der Zähler weiter**, weil die Batterie das Haus *durch* den Wechselrichter
-  versorgt: um 05:27 standen 2,18 kWh Ausgang bei SOC 35,9 % und ohne Sonne. Ohne die Akku-Glieder
-  wäre `pv_kwh` dort **negativ** geworden (−0,12) → **jetzt auf 0 begrenzt** (Erzeugung kann nicht
-  negativ sein; `factor()` liefert für einen flachen Tag ohnehin None, die Begrenzung kann den
-  Faktor also nicht schönrechnen).
-  **Spaltenumbau bewiesen:** „header rewritten to 39 columns, 5 old row(s) mapped by name" —
-  `measured_pv_kwh` steht als **Spalte 8** in der Datei, ohne die alten Zeilen zu verschieben.
-  **6-Minuten-Fehler unverändert:** 190 Treffer im Proxy-Log, weiter exakt alle 6 Minuten
-  (03:16, 03:22). Die Pause und die App-Änderungen haben daran nichts geändert.
-* **PROGNOSE-FAKTOR: DIE AKKULADUNG FEHLTE (27.09., 16:00) — der wichtigste Fund des Tages.**
-  Hinweis des Eigentümers, wörtlich: *„Wenn wir dabei Einspeichern in den Akku nicht berücksichtigen,
-  dann wird unser Forecast bis 24:00 immer falsch sein"*. **Er hat recht, und zwar messbar.**
-  Der Faktor verglich **PV-Erzeugung** (Prognose) mit dem **Wechselrichter-Ausgang** (AC-Integral).
-  Die Differenz ist die Batterieladung — sie ist erzeugt, aber nicht abgegeben.
+  The **meter is the better source**: 21.152 against 18.687 from the integral — the latter loses
+  every minute in which the service does not run (here 2.5 kWh).
+  **At night the meter keeps running**, because the battery supplies the house *through* the
+  inverter: at 05:27 there were 2.18 kWh output at SOC 35.9 % and without sun. Without the battery
+  terms `pv_kwh` would have become **negative** there (−0.12) → **now limited to 0** (generation
+  cannot be negative; `factor()` returns None for a flat day anyway, so the limit cannot
+  make the factor look better).
+  **Column rebuild proven:** "header rewritten to 39 columns, 5 old row(s) mapped by name" —
+  `measured_pv_kwh` stands as **column 8** in the file, without shifting the old rows.
+  **6-minute error unchanged:** 190 hits in the proxy log, still exactly every 6 minutes
+  (03:16, 03:22). The pause and the app changes have changed nothing about it.
+* **FORECAST FACTOR: THE BATTERY CHARGE WAS MISSING (27.09., 16:00) — the most important finding of the day.**
+  Owner's note, verbatim: *„Wenn wir dabei Einspeichern in den Akku nicht berücksichtigen,
+  dann wird unser Forecast bis 24:00 immer falsch sein"* (If we do not take charging into the battery into account, then our forecast until 24:00 will always be wrong). **He is right, and measurably so.**
+  The factor compared **PV generation** (forecast) with the **inverter output** (AC integral).
+  The difference is the battery charge — it is generated, but not delivered.
   ```
-                       vorher    nachher
-  gemessen              12,19  →   20,55 kWh    Ausgang + Akkuladung
-  bis jetzt erwartet    19,93      22,44 kWh
-  Faktor                 0,61  →    0,916       statt 40 % Minderertrag
-  restlicher Tag         3,81  →    3,40 kWh    (korrigiert)
+                       before    after
+  measured              12.19  →   20.55 kWh    output + battery charge
+  expected until now    19.93      22.44 kWh
+  factor                 0.61  →    0.916       instead of 40 % yield shortfall
+  rest of day            3.81  →    3.40 kWh    (corrected)
   ```
-  **Ursache im Code:** der Kommentar bei der Integration behauptete, am AC-Knoten brauche die
-  Batterie „kein eigenes Glied" — das gilt für **Haus/Auto**, aber **nicht** für den
-  Prognosevergleich. Nachts kippt der Fehler ins Gegenteil: der Zähler steigt weiter, wenn die
-  Batterie entlädt.
-  **Umsetzung** (`ha-app/evcharge/main.py`, gitignored):
-  * neues Tagesfeld **`pv_kwh` = `ac_kwh` + `charge_kwh` − `discharge_kwh`** (Erhaltungssatz über den
-    Tag: abgegeben + jetzt im Akku − aus dem Akku = was das Dach erzeugt hat);
-  * `factor_ac` vergleicht jetzt gegen `pv_kwh` (Name bleibt, weil Tagessatz und Oberfläche ihn
-    kennen); zusätzlich `factor_ac_delivered` für den alten Wert und `measured_pv_kwh` als Spalte;
-  * `measured_today_kwh` der Prognose nimmt `pv_kwh`; Rücksicherung nach Neustart liest
-    `measured_pv_kwh`, fällt bei alten Zeilen auf `measured_ac_kwh` zurück;
-  * Tooltip der Prognosezeile sagt jetzt „PV-Erzeugung = Wechselrichter-Ausgang + Akkuladung".
-  * Der CSV-Schreiber ordnet neue Spalten **über den Namen** zu (nicht über die Position) — das neue
-    Feld landet also ohne Eingriff in der Datei.
-  **Geprüft:** alle 13 Testsuiten grün, Dienst neu gestartet, Faktor live von 0,61 auf 0,916.
-  **Merke:** Bei einer Anlage mit Batterie ist der **AC-Ausgang** *nicht* die **PV-Erzeugung**. Wer
-  eine PV-Prognose gegen Messwerte stellt, muss das Batterieglied mitrechnen, sonst ist der Faktor
-  tagsüber zu niedrig und nachts zu hoch.
-* **GARAGE-PV ALS ZWEITE ZAHL ANGEBAUT (27.09., 15:45).** Wunsch des Eigentümers, wörtlich:
+  **Cause in the code:** the comment at the integration claimed that at the AC node the
+  battery needed "no separate term" — that holds for **house/car**, but **not** for the
+  forecast comparison. At night the error flips into the opposite: the meter keeps rising while the
+  battery discharges.
+  **Implementation** (`ha-app/evcharge/main.py`, gitignored):
+  * new day field **`pv_kwh` = `ac_kwh` + `charge_kwh` − `discharge_kwh`** (conservation law over the
+    day: delivered + now in the battery − out of the battery = what the roof generated);
+  * `factor_ac` now compares against `pv_kwh` (name stays, because the day record and the UI
+    know it); additionally `factor_ac_delivered` for the old value and `measured_pv_kwh` as a column;
+  * `measured_today_kwh` of the forecast takes `pv_kwh`; restore after restart reads
+    `measured_pv_kwh`, falls back to `measured_ac_kwh` for old rows;
+  * Tooltip of the forecast row now says "PV generation = inverter output + battery charge".
+  * The CSV writer maps new columns **by name** (not by position) — so the new
+    field lands in the file without any intervention.
+  **Verified:** all 13 test suites green, service restarted, factor live from 0.61 to 0.916.
+  **Note:** In a plant with a battery, the **AC output** is *not* the **PV generation**. Anyone who
+  sets a PV forecast against measurements must include the battery term, otherwise the factor is
+  too low during the day and too high at night.
+* **GARAGE PV ADDED AS A SECOND NUMBER (27.09., 15:45).** Owner's request, verbatim:
   *„deye nicht addieren, hier ging es ja vor allem um akku, der nur von SE geladen werden kann.
-  Aber so ähnlich wie bei leitung auch deyes produktion als zweiter zahl anzeigen"*.
+  Aber so ähnlich wie bei leitung auch deyes produktion als zweiter zahl anzeigen"* (Do not add the deye, here it was mainly about the battery, which can only be charged by the SE. But similarly to the line, also show the deye's production as a second number).
   ```
-  Zeile:  inverter output today / garage PV      13,59 / 2,70
+  Row:  inverter output today / garage PV      13.59 / 2.70
   ```
-  **Bewusst NICHT addiert** — die Hausbatterie lädt nur der SolarEdge, eine Summe würde also eine
-  andere Frage beantworten. Muster genau wie bei der Leistung (`spv.textContent = SE + " / " + garage`).
-  **Umsetzung** (in `ha-app/evcharge/main.py`, Datei ist **gitignored** — Lade-Apps bleiben außerhalb
-  des Repos):
-  * `_garage_day` hält `{day, start_kwh, today_kwh, partial}`; die Verankerung entsteht beim ersten
-    Lesevorgang eines Tages aus `sdm_state["pv_energy_kwh"]` (= HA `sensor.garage_pv_energie`).
-  * `_garage_day_update()` kopiert den Aufbau der SE-Verankerung (`_fc_se_latch`), inklusive
-    Teil-Tag-Marker und Rückwärts-Sperre (ein Reset/Zählerumschlag darf keine Zahl erfinden).
-  * Der Wert steht als `garage_day` im Zustand und wird nur angezeigt; **kein** Einfluss auf die Regelung.
-  * Der Tooltip der Zeile sagt jetzt die Wahrheit: *„ACHTUNG: das ist NICHT die PV-Erzeugung, sondern
-    was der Wechselrichter ABGEGEBEN hat"* — die alte Behauptung („genau die Zahl, die deine
-    Monitoring-App als Produktion zeigt") war seit dem Einbau der Batterie falsch.
+  **Deliberately NOT added** — only the SolarEdge charges the house battery, so a sum would answer a
+  different question. Pattern exactly as with the power (`spv.textContent = SE + " / " + garage`).
+  **Implementation** (in `ha-app/evcharge/main.py`, file is **gitignored** — charging apps stay outside
+  the repo):
+  * `_garage_day` holds `{day, start_kwh, today_kwh, partial}`; the anchor is created on the first
+    read of a day from `sdm_state["pv_energy_kwh"]` (= HA `sensor.garage_pv_energie`).
+  * `_garage_day_update()` copies the structure of the SE anchor (`_fc_se_latch`), including
+    partial-day marker and backward latch (a reset/counter rollover must not invent a number).
+  * The value stands as `garage_day` in the state and is only displayed; **no** influence on the control.
+  * The tooltip of the row now tells the truth: *"ATTENTION: this is NOT the PV generation, but
+    what the inverter DELIVERED"* — the old claim ("exactly the number that your
+    monitoring app shows as production") has been wrong since the battery was installed.
   ```
   2026-09-27 13:45:20  garage PV day baseline latched at 2813.300 kWh (HA counter) (partial day)
   garage_day: {"day_kwh": 0.0, "counter_kwh": 2813.3, "partial": true, "day": "2026-09-27"}
   ```
-  **Geprüft:** 511 Einzelprüfungen über alle 13 Suiten grün, `node --check` für das eingebettete
-  JavaScript ok, Dienst sauber neu gestartet.
-  **Merke:** Die Tagesgrenze der App ist **Mitternacht in der Hauszeitzone** — im Protokoll steht sie
-  als **22:00 UTC**, weil der Server UTC läuft und das Protokoll die Hauszeit zeigt. Die
-  Tagesbaselines aus dem Log beweisen es: `29287.762 → 29314.126 → 29343.352` ergeben 26,364 und
-  29,226 kWh — exakt die gespeicherten Tageswerte.
-  **Offen:** Der Lebensdauer-Vergleich (App 29,36 MWh gegen SE-App 66,5 MWh) ist weiter ungeklärt.
-* **MELDERHYTHMUS GEMESSEN (26.09., 12:14–12:54).** Der lange Mithörer zeigt, wie oft das Ventil
-  von selbst Werte schickt:
+  **Verified:** 511 individual checks across all 13 suites green, `node --check` for the embedded
+  JavaScript ok, service cleanly restarted.
+  **Note:** The day boundary of the app is **midnight in the house timezone** — in the log it stands
+  as **22:00 UTC**, because the server runs UTC and the log shows the house time. The
+  day baselines from the log prove it: `29287.762 → 29314.126 → 29343.352` yield 26.364 and
+  29.226 kWh — exactly the stored day values.
+  **Open:** The lifetime comparison (app 29.36 MWh against SE app 66.5 MWh) remains unresolved.
+* **REPORTING RHYTHM MEASURED (26.09., 12:14–12:54).** The long listener shows how often the valve
+  sends values on its own:
   ```
-  12:26:49  ist=24,0        ← letzte Temperaturmeldung nach dem Re-Pair
-  12:49:19  soll=8,0        ← Befehl der neuen Automatik (Punkt 12:49:13)
-  12:51:19  ist=23,0        ← ★ nächste Temperaturmeldung, ~24 Minuten später
+  12:26:49  actual=24.0        ← last temperature report after the re-pair
+  12:49:19  setpoint=8.0        ← command of the new automation (at 12:49:13)
+  12:51:19  actual=23.0        ← ★ next temperature report, ~24 minutes later
   ```
-  **Ergebnis:** Die Ist-Temperatur kommt **selbstständig, aber selten — im Bereich einer halben
-  Stunde.** Der Sollwert erscheint dagegen sofort (er ist der eigene Schreibbefehl).
-  **Folge für die Automatik:** nicht auf die Rückmeldung warten. Der Controller schreibt und kennt
-  seinen Sollwert; für die Ist-Temperatur muss er mit bis zu ~30 Minuten alten Werten rechnen.
-  Ebenfalls sichtbar: die `running_state`-Korrektur wirkt (bis 12:24 `heating`, danach `idle`, was
-  bei Soll 8 < Ist 24 richtig ist), und beim Re-Pair um 12:24:39 sprang die Kindersicherung für
-  30 Sekunden auf `on`.
-  * **Korrektur zu einer früheren Behauptung:** das Dachstudio ist **nicht** die funkschwächste Ecke.
-    Es steht dort ein eigener Router (`Steckdose Mascha`, LQI 140), das Haus hat **26 Router** gegen
-    36 Endgeräte, und die LQI-Werte schwanken stark (Maschas Button 172 → 80 innerhalb einer Stunde,
-    `FensterSensorAQ` im selben Raum 164). Die zunächst gemeldeten 60–68 waren Momentaufnahmen.
-    **Warum Maschas Taster seine Netzanmeldung verlor, ist mit den vorliegenden Daten nicht
-    entschieden** (Route oder Koordinator-Tabelle) — nicht als geklärt darstellen.
-  * **Button → Steckdose läuft über HA**, nicht als Gerätebindung: die Automation „Button => Mascha PC"
-    (`automation.button_mascha_pc`, id `1758434574653`) hört auf `zha_event`, prüft
-    `device_ieee == a4:c1:38:d6:46:c0:09:e7` und `command == "toggle"` und schaltet
-    `switch.steckdose_mascha`. Beleg für den Erfolg des Neuanlernens: Auslösung 19:31:16 Uhr, sechs
-    Minuten nach dem Anlernen. **Folge:** solange der Taster nicht eingebucht ist, ist die Steckdose
-    nicht schaltbar, auch wenn seine LED leuchtet. Der Trigger ist ungefiltert (`zha_event` für alle
-    Geräte) — er funktioniert, aber ein `event_data`-Filter auf die IEEE wäre sauberer und würde bei
-    `mode: single` auch das Verwerfen eines Drucks während eines anderen Ereignisses vermeiden.
-  Nächste Zellen: SZTemp 48 %, WohnzimmerTemp 55,5 %, TempSensorTreppe 59 %.
-* **Drei Taster-Automationen auf gefilterten Trigger umgestellt** (25.09.): `Button => Steckdose mein
-  PC` (id 1758393492176), `Button => Mascha PC` (1758434574653) und `Button => Steckdose Altar`
-  (1758434943261) hörten auf **jedes** `zha_event` im Haus und filterten erst in der Bedingung; jetzt
-  steht `event_data: {device_ieee: …}` direkt im Trigger. Geändert wurde **nur** der Trigger —
-  Bedingung, Aktion und Mode sind nach dem Schreiben byteweise verglichen und identisch, alle drei
-  weiter `on`. Der Filter ist derselbe Wert, den die Bedingung ohnehin prüft (die nachweislich
-  funktioniert, siehe 19:31-Auslösung). **End-to-end belegt am selben Abend** (Tastendruck 20:40):
-  Mascha 20:40:04 → `switch.steckdose_mascha` aus; Altar 20:40:44 → `switch.tz3000_gjnozsaz_ts011f`
-  („Steckdose Wohnzimmer Altar") um 20:40:48 an. **Wichtig dabei:** die `switch`-Entität des Tasters
-  selbst ändert sich beim Drücken **nicht** (beide blieben auf ihrem alten Zeitstempel) — sie ist der
-  On/Off-Cluster-Zustand des Geräts, kein Druckzähler. Empfangsnachweis ist `zha_event`, nicht diese
-  Entität; die frühere Notiz im Skill `home-assistant-state-forensics` war in dem Punkt falsch und
-  wurde korrigiert.
-* **Zwei tote Automationen gefunden:** `automation.goe_nachtladen_start_2` und
-  `automation.goe_nachtladen_stop` stehen auf `unavailable`, zu beiden existiert **keine**
-  Konfiguration mehr (REST-Config-View: 404). Karteileichen aus der go-e-/Nachtladen-Zeit; sie können
-  nichts mehr auslösen und kollidieren daher nicht mit dem eigenen Lade-Regler. Aufräumen offen.
-* **„Fenster Bad"** (`lumi.sensor_magnet.aq2`, bisher nur Werksname): Gerätename über das Register
-  gesetzt. **Entitäts-IDs absichtlich NICHT umbenannt** — die stehen im Lovelace-Dashboard
-  `fenster-turen`, ein Rename hätte die Kachel zerlegt. Vor jedem ID-Rename erst referenzieren
-  (Automationen + alle Storage-Boards), das hat hier genau den Fehler verhindert. Aufnahme des
-  Sensors belegt: er meldete ein 2 Sekunden kurzes Auf/Zu als beide Flanken.
-* **ZHA ist die Zigbee-Anbindung, nicht Zigbee2MQTT** (Config-Entry „Sonoff Zigbee 3.0 USB Dongle
-  Plus"); `zigbee2mqtt/#` am Broker ist leer. Zu `zha_event`: ein **eingebuchter Taster** erzeugt
-  beim Drücken eines (belegt: `attribute_updated on_off` von Maschas IEEE Sekunden nach dem
-  Anlernen, und **kein** Ereignis während 5–10 Drücken davor — der saubere Vorher/Nachher-Beweis).
-  Ein schlafender Präsenz-/Battersensor erzeugt dagegen keines. Ein leerer Ereignisstrom beweist
-  also nichts über Sensoren; maßgeblich bleibt die Zustandsänderung der Entität.
+  **Result:** The actual temperature comes **on its own, but rarely — on the order of half
+  an hour.** The setpoint, by contrast, appears immediately (it is our own write command).
+  **Consequence for the automation:** do not wait for the report-back. The controller writes and knows
+  its setpoint; for the actual temperature it must reckon with values up to ~30 minutes old.
+  Also visible: the `running_state` correction works (until 12:24 `heating`, afterwards `idle`, which
+  with setpoint 8 < actual 24 is correct), and on the re-pair at 12:24:39 the child lock jumped
+  to `on` for 30 seconds.
+  * **Correction to an earlier claim:** the attic studio is **not** the weakest-radio corner.
+    A dedicated router stands there (`Steckdose Mascha`, LQI 140), the house has **26 routers** against
+    36 end devices, and the LQI values fluctuate strongly (Mascha's button 172 → 80 within an hour,
+    `FensterSensorAQ` in the same room 164). The initially reported 60–68 were snapshots.
+    **Why Mascha's button lost its network registration is not
+    decided with the available data** (route or coordinator table) — do not present it as settled.
+  * **Button → socket runs via HA**, not as a device binding: the automation "Button => Mascha PC"
+    (`automation.button_mascha_pc`, id `1758434574653`) listens on `zha_event`, checks
+    `device_ieee == a4:c1:38:d6:46:c0:09:e7` and `command == "toggle"` and switches
+    `switch.steckdose_mascha`. Evidence for the success of the re-pairing: trigger 19:31:16, six
+    minutes after the pairing. **Consequence:** as long as the button is not joined, the socket
+    is not switchable, even if its LED lights up. The trigger is unfiltered (`zha_event` for all
+    devices) — it works, but an `event_data` filter on the IEEE would be cleaner and, with
+    `mode: single`, would also avoid discarding a press during another event.
+  Next cells: SZTemp 48 %, WohnzimmerTemp 55.5 %, TempSensorTreppe 59 %.
+* **Three button automations switched to a filtered trigger** (25.09.): `Button => Steckdose mein
+  PC` (id 1758393492176), `Button => Mascha PC` (1758434574653) and `Button => Steckdose Altar`
+  (1758434943261) listened to **every** `zha_event` in the house and filtered only in the condition; now
+  `event_data: {device_ieee: …}` stands directly in the trigger. **Only** the trigger was changed —
+  condition, action and mode were compared byte-wise after writing and are identical, all three
+  still `on`. The filter is the same value that the condition checks anyway (which demonstrably
+  works, see the 19:31 trigger). **Proven end-to-end the same evening** (button press 20:40):
+  Mascha 20:40:04 → `switch.steckdose_mascha` off; Altar 20:40:44 → `switch.tz3000_gjnozsaz_ts011f`
+  ("Steckdose Wohnzimmer Altar") on at 20:40:48. **Important here:** the `switch` entity of the button
+  itself does **not** change when pressed (both stayed at their old timestamp) — it is the
+  on/off cluster state of the device, not a press counter. Proof of reception is `zha_event`, not this
+  entity; the earlier note in the skill `home-assistant-state-forensics` was wrong on that point and
+  has been corrected.
+* **Two dead automations found:** `automation.goe_nachtladen_start_2` and
+  `automation.goe_nachtladen_stop` stand at `unavailable`, for both **no**
+  configuration exists anymore (REST config view: 404). Dead entries from the go-e/night-charging era; they can
+  no longer trigger anything and therefore do not collide with our own charge controller. Cleanup open.
+* **"Fenster Bad"** (`lumi.sensor_magnet.aq2`, previously only the factory name): device name set via the register
+  **Entity IDs deliberately NOT renamed** — they are in the Lovelace dashboard
+  `fenster-turen`, a rename would have broken the tile. Before any ID rename, first reference
+  (automations + all storage boards), that prevented exactly this error here. Inclusion of the
+  sensor documented: it reported a 2-second short open/close as both edges.
+* **ZHA is the Zigbee binding, not Zigbee2MQTT** (config entry "Sonoff Zigbee 3.0 USB Dongle
+  Plus"); `zigbee2mqtt/#` at the broker is empty. On `zha_event`: a **joined button** generates
+  one when pressed (documented: `attribute_updated on_off` from Mascha's IEEE seconds after the
+  pairing, and **no** event during 5–10 presses before — the clean before/after proof).
+  A sleeping presence/battery sensor, by contrast, generates none. An empty event stream proves
+  nothing about sensors; the state change of the entity remains authoritative.
 
-## Zuletzt behoben (23.09.2026)
+## Recently fixed (23.09.2026)
 
-* **HAs Standort stand noch auf der Werkseinstellung Amsterdam** (52,3731/4,8903, Höhe 0 m) —
-  jede sonnenbasierte HA-Automatik und später der Rückfall unserer Prognose-Regel hätte damit
-  für die falsche Stadt gerechnet. Gesetzt über `homeassistant.set_location` auf
-  **49,1278/8,4076, 105 m** (PLZ-Mittelpunkt Linkenheim; die Höhe aus Open-Meteo, demselben
-  Höhenmodell wie die Prognose). Zeitzone war bereits `Europe/Berlin`, Land `DE`.
-  **Belegt dreifach:** `/api/config`, `zone.home` und als unabhängiger Zeuge der
-  Sonnenuntergang — `sun.sun` springt von 17:36 UTC (19:36 Berlin) auf **17:24 UTC
-  (19:24 Berlin)**, 12 Minuten früher, genau der Sprung von 52,37° auf 49,13° Nord.
-  Anschließend auf den **genauen Punkt der Anlage** nachgezogen (der Besitzer hat ihn
-  geschickt): dazu die Höhe erneut aus dem Höhenmodell geholt (111 m) und den Sonnenuntergang
-  als Plausibilitätsprobe genommen (820 m Verschiebung ⇒ wenige Sekunden, gemessen 2 s).
-  **Datenschutz-Regel:** die genauen Koordinaten stehen **nur** in Home Assistant und in der
-  lokalen `config.json` (per `.gitignore` ausgeschlossen, mit `git check-ignore` geprüft) —
-  sie gehören **nicht** in dieses Repo oder in die Doku. Öffentlich ist hier nur die PLZ-Ebene.
-  Auch die App rechnet jetzt mit demselben Punkt (frisch abgerufen: 28,86 kWh, unabhängig
-  nachgerechnet 28,86 kWh).
-* **Der Wechselrichter ist nachweislich lesend** — siehe die Regel oben: die ungenutzten
-  Batterie-Schreibfunktionen und die Modbus-Schreibprimitive sind raus, strukturell gepinnt,
-  und der Proxy zählt weiter `upstream_writes: 0`.
-* **PV-Prognose Schritt 1** gebaut und live (siehe eigener Abschnitt oben).
+* **HA's location was still on the factory setting Amsterdam** (52.3731/4.8903, elevation 0 m) —
+  every sun-based HA automation and later the fallback of our forecast rule would thereby have
+  computed for the wrong city. Set via `homeassistant.set_location` to
+  **49.1278/8.4076, 105 m** (postcode centre of Linkenheim; the elevation from Open-Meteo, the same
+  elevation model as the forecast). Timezone was already `Europe/Berlin`, country `DE`.
+  **Evidenced threefold:** `/api/config`, `zone.home` and, as an independent witness, the
+  sunset — `sun.sun` jumps from 17:36 UTC (19:36 Berlin) to **17:24 UTC
+  (19:24 Berlin)**, 12 minutes earlier, exactly the jump from 52.37° to 49.13° North.
+  Subsequently adjusted to the **exact point of the plant** (the owner
+  sent it): for that, the elevation was fetched again from the elevation model (111 m) and the sunset
+  taken as a plausibility check (820 m shift ⇒ a few seconds, measured 2 s).
+  **Privacy rule:** the exact coordinates are **only** in Home Assistant and in the
+  local `config.json` (excluded via `.gitignore`, checked with `git check-ignore`) —
+  they do **not** belong in this repo or in the docs. Publicly, only the postcode level is here.
+  The app also now computes with the same point (freshly retrieved: 28.86 kWh, independently
+  recomputed 28.86 kWh).
+* **The inverter is demonstrably read-only** — see the rule above: the unused
+  battery write functions and the Modbus write primitives are out, structurally pinned,
+  and the proxy still counts `upstream_writes: 0`.
+* **PV forecast step 1** built and live (see its own section above).
 
-## Zuletzt behoben (22.09.2026)
+## Recently fixed (22.09.2026)
 
-* **Der Deye-Poller schweigt jetzt nachts und wacht am Zähler auf** (anderes Projekt:
-  `HA-POWER-DASHBOARD/deye-pv-rs`). Vorher: ein Fehlversuch alle 33 s, jeder mit Logzeile
-  **und** einem `offline` nach HA — rund 2600 Zeilen und 2600 Nachrichten je Nacht für ein
-  Gerät, das erwartungsgemäß schläft (das SolarMAN-Logger-Modul hängt am Wechselrichter;
-  Beweis: es war um **05:16 UTC** von selbst wieder da, Port 8899 offen). Jetzt: Verdopplung
-  vom Intervall bis `--backoff-max` (900 s), Logzeile nur beim ersten Fehler einer Serie und
-  dann jedem achten Schritt, `offline` nur beim Zustandswechsel (einmal je Ausfall), und die
-  Erholungszeile nennt die Zahl der Versuche. **Die Idee des Besitzers ist der Weckruf:**
-  während des Backoffs liest der Poller `sensor.sdm630_total_kwh` (wächst in beide
-  Richtungen, bewegt sich also genau dann, wenn im Garagenstrang Energie fließt — einspeisen
-  oder ins Auto) und pollt sofort wieder, wenn der Zähler sich bewegt; ein vorzeitiger
-  Versuch je Backoff-Periode, damit ein tagsüber defekter Logger nicht gehämmert wird.
-  Gepinnt durch 6 neue Unit-Tests (Schedule, Drosselung, einmal-je-Ausfall, Weck-Gating),
-  33 im Binary + 13 Konformitäts-Tests grün.
-* **Dritter Session-Wert: SDM + Garage-PV** (`ha-app/evcharge/session_meter.py`, Wunsch des
-  Besitzers; Regeln oben). Zwei Fallen dabei geschlossen, jede mit Test: ein **0,00** des
-  Wechselrichter-Zählers als *Basis* hätte die nächste echte Zahl in eine ~279-kWh-Korrektur
-  verwandelt, und eine Session, die beginnt, während der Logger schläft, holt die Basis jetzt
-  nach (Korrektur dann „teilweise"). `test_session_meter` **68 Prüfungen**, 12 Suiten grün.
-* **Messungen am Garagenstrang** (22.09.2026 — wichtig beim Lesen aller Zahlen):
-  * Drei Nächte, je ~11,5 h: SDM **Import und Export exakt 0,000 kWh**. Der Strang ist also
-    nachts nicht „lastfrei", sondern **unter der Zählschwelle** des Geräts (Datenblatt:
-    Startstrom 0,4 % von Ib = **0,04 A**, spezifiziert erst ab 5 % Ib = 0,5 A; gemessen:
-    0,41 A / 97 VA / **−97 var** / PF −0,20 auf L2, Zähler stehen trotzdem). Router, Tor und
-    go-e-Standby werden also nicht mitgezählt — die Session-Zahl ist davon sauber.
-  * Die Garage hängt praktisch **einphasig auf L2** (L1/L3 messen 0,00 A); dort Garage-PV,
-    go-e, Router, Tor.
-  * Der **Wechselrichter-Zähler** liegt gegen den SDM-Export um **höchstens 8 %** zu hoch
-    (4,18 gegen 3,88 kWh in 12 h) — und diese Lücke ist **kein Beweis für einen Fehler des
-    Wechselrichters**: 0,30 kWh in 12 h sind genau **25 W Dauerlast am Strang**, und die gibt
-    es dort (Router, Tor, go-e-Standby) — sie sind nur für den Zähler unsichtbar, weil er sie
-    nicht **zählen** kann. Der echte Fehler liegt daher zwischen ~0 % (bei ~25 W Dauerlast)
-    und +8 %; ein Zwischenstecker vor dem Router würde es klären. Nach dem Aufwachen liest
-    das Register kurz 0,00.
-  * **Der Zähler zählt in 0,1 kWh, nicht in 0,01** (korrigiert 22.09.2026): unser Poller las
-    ihn **10× zu klein** (279,56 kWh statt 2795,6). Entschieden **ohne** die App, über die
-    Selbstkonsistenz von Zähler und Leistung: im Fenster 21.09. 05:00–17:00Z lief das Register
-    **42 Schritte** weiter, während die protokollierte AC-Leistung **4,18 kWh** ergab → 0,0995
-    kWh je Schritt. Die Deye-App bestätigt es von der anderen Seite (2,79 MWh nach 739
-    Betriebstagen ≈ 3,8 kWh/Tag, passend zum gemessenen Tagesertrag). Folge: auch der **dritte
-    Session-Wert** wäre um Faktor 10 zu klein gewesen. Der Poller veröffentlicht außerdem
-    keinen rückwärts laufenden Zähler mehr — HA liest ein Absinken bei `total_increasing` als
-    Zählerreset und **addiert** den neuen Wert, hätte also morgens den ganzen Stand als
-    Erzeugung gebucht.
-  * Offen: Das Register ist **16 Bit** und läuft bei **6553,5 kWh** über (~2,7 Jahre bei
-    diesem Ertrag) — dann friert der Rückwärts-Schutz den Wert ein, vorher muss das hohe Wort
-    geprüft werden.
+* **The Deye poller now falls silent at night and wakes on the meter** (different project:
+  `HA-POWER-DASHBOARD/deye-pv-rs`). Before: a failed attempt every 33 s, each with a log line
+  **and** an `offline` to HA — around 2600 lines and 2600 messages per night for a
+  device that sleeps as expected (the SolarMAN logger module is attached to the inverter;
+  proof: it was back on its own at around **05:16 UTC**, port 8899 open). Now: doubling
+  of the interval up to `--backoff-max` (900 s), log line only on the first error of a series and
+  then every eighth step, `offline` only on the state change (once per failure), and the
+  recovery line names the number of attempts. **The owner's idea is the wake-up call:**
+  during the backoff the poller reads `sensor.sdm630_total_kwh` (grows in both
+  directions, so it moves exactly when energy flows in the garage branch — export
+  or into the car) and polls again immediately when the meter moves; one early
+  attempt per backoff period, so that a logger broken during the day is not hammered.
+  Pinned by 6 new unit tests (schedule, throttling, once-per-failure, wake gating),
+  33 in the binary + 13 conformance tests green.
+* **Third session value: SDM + garage PV** (`ha-app/evcharge/session_meter.py`, owner's
+  request; rules above). Two traps closed in the process, each with a test: a **0.00** of the
+  inverter meter as the *base* would have turned the next real number into a ~279 kWh correction,
+  and a session that begins while the logger sleeps now catches up the base
+  afterwards (correction then "partial"). `test_session_meter` **68 checks**, 12 suites green.
+* **Measurements at the garage branch** (22.09.2026 — important when reading all the numbers):
+  * Three nights, ~11.5 h each: SDM **import and export exactly 0.000 kWh**. The branch is therefore
+    at night not "load-free", but **below the counting threshold** of the device (datasheet:
+    starting current 0.4 % of Ib = **0.04 A**, specified only from 5 % Ib = 0.5 A; measured:
+    0.41 A / 97 VA / **−97 var** / PF −0.20 on L2, meter stays put anyway). Router, gate and
+    go-e standby are therefore not counted along — the session number is clean of that.
+  * The garage hangs practically **single-phase on L2** (L1/L3 measure 0.00 A); there garage PV,
+    go-e, router, gate.
+  * The **inverter meter** is too high by **at most 8 %** against the SDM export
+    (4.18 against 3.88 kWh in 12 h) — and this gap is **no proof of a fault of the
+    inverter**: 0.30 kWh in 12 h are exactly **25 W continuous load on the branch**, and that
+    exists there (router, gate, go-e standby) — they are only invisible to the meter because it
+    cannot **count** them. The real fault therefore lies between ~0 % (at ~25 W continuous load)
+    and +8 %; an inline plug in front of the router would clarify it. After waking up,
+    the register briefly reads 0.00.
+  * **The meter counts in 0.1 kWh, not in 0.01** (corrected 22.09.2026): our poller read
+    it **10× too small** (279.56 kWh instead of 2795.6). Decided **without** the app, via the
+    self-consistency of meter and power: in the window 21.09. 05:00–17:00Z the register ran
+    **42 steps** further, while the logged AC power yielded **4.18 kWh** → 0.0995
+    kWh per step. The Deye app confirms it from the other side (2.79 MWh after 739
+    operating days ≈ 3.8 kWh/day, matching the measured daily yield). Consequence: the **third
+    session value** too would have been too small by a factor of 10. The poller also publishes
+    no backward-running meter anymore — HA reads a decrease under `total_increasing` as a
+    meter reset and **adds** the new value, so it would have booked the whole reading as
+    generation in the morning.
+  * Open: the register is **16 bit** and overflows at **6553.5 kWh** (~2.7 years at
+    this yield) — then the backward protection freezes the value, before that the high word
+    must be checked.
+## Recently fixed (2026-09-21)
 
-## Zuletzt behoben (21.09.2026)
+* **The app sent `alw=0` even though there was enough sun** (`controller.py: _finalize`).
+  Measured on 20.09.: `11:28:36 alw=0` at **2358 W** surplus, `11:30:37 alw=0` at
+  **1901 W** — the owner saw it from within the app (2.85 kW production at
+  2.66 kW consumption, 99 % solar+battery). Cause: the **start delay hung on
+  `charger.charging`** (whether the car is drawing), but the write decision on
+  **`charger.enabled`** (whether the wallbox is enabled). With a plugged-in but not
+  drawing car (full / departure time), `charge and not charging` was true in **every** cycle
+  → the 60 s grace was re-armed every cycle → the decision was forced to
+  `charge=False` → the write path (which compares against `enabled`) switched the
+  wallbox off. **One stop per minute with plenty of surplus**, five of them in the
+  safety window — exactly that triggered the fault. Both delays now hang on
+  the same quantity as the write path (`enabled`); a waiting grace writes **nothing**.
+  Pinned by „a plugged car that is not drawing must not be stopped every cycle"
+  (10 cycles, 0 `alw`), „the start grace waits on the wallbox and writes nothing while it
+  waits" and „the stop grace holds first and writes exactly one stop afterwards".
+* **Hysteresis 300 W at the lower limit** (`enable_threshold_w` / `disable_threshold_w`,
+  `controller.py: _floor_w`). Until then `disable_threshold_w` was **declared and never
+  read** — a setting that did nothing. Now: start from lower limit **+300 W**,
+  hold until lower limit **−300 W**; the **start hysteresis** the owner lowered on the same day
+  to **100 W** (config + restart), the hold limit stayed at 300 W. Live visible
+  in the reasoning: „below minimum (**1080 W**, 1p)" as long as the wallbox enables,
+  „(**1480 W**, 1p)" when it is off.
+* **Safety only counts stops now** (`safety.py`) — rule above, `amx` never counted.
+* **Test double corrected** (`tests/test_controller.py`): `car()` sets `enabled` matching
+  `charging`. Before, it described states the hardware does not produce (current flows
+  without the wallbox enabling) — and thereby masked exactly this fault.
+* Live evidence after the restart on 21.09. 06:40: one `amx=6` (re-adjusting while holding), then
+  **exactly one** `alw=0` after the 180 s grace expired, then quiet; counter 0/5, no fault.
+  Status: **12 suites green** (`test_controller` 94, `test_safety` 33, `test_session_meter`
+  68 checks).
 
-* **Die App hat `alw=0` geschickt, obwohl genug Sonne da war** (`controller.py: _finalize`).
-  Gemessen am 20.09.: `11:28:36 alw=0` bei **2358 W** Überschuss, `11:30:37 alw=0` bei
-  **1901 W** — der Besitzer hat es aus der App heraus gesehen (2,85 kW Produktion bei
-  2,66 kW Verbrauch, 99 % solar+battery). Ursache: die **Anlaufverzögerung hing an
-  `charger.charging`** (ob das Auto zieht), die Schreibentscheidung aber an
-  **`charger.enabled`** (ob die Wallbox freigegeben ist). Bei einem angesteckten, aber nicht
-  ziehenden Auto (voll / Abfahrtszeit) war `charge and not charging` in **jedem** Zyklus wahr
-  → die 60-s-Gnade wurde jeden Zyklus neu aufgezogen → die Entscheidung wurde auf
-  `charge=False` gezwungen → der Schreibpfad (der gegen `enabled` vergleicht) schaltete die
-  Wallbox ab. **Ein Stopp pro Minute bei reichlich Überschuss**, fünf davon im
-  Sicherungsfenster — genau das löste die Störung aus. Beide Verzögerungen hängen jetzt an
-  derselben Größe wie der Schreibpfad (`enabled`); eine wartende Gnade schreibt **nichts**.
-  Gepinnt durch „a plugged car that is not drawing must not be stopped every cycle"
-  (10 Zyklen, 0 `alw`), „the start grace waits on the wallbox and writes nothing while it
-  waits" und „the stop grace holds first and writes exactly one stop afterwards".
-* **Hysterese 300 W an der Untergrenze** (`enable_threshold_w` / `disable_threshold_w`,
-  `controller.py: _floor_w`). `disable_threshold_w` war bis dahin **deklariert und nie
-  gelesen** — eine Einstellung, die nichts tat. Jetzt: Start ab Untergrenze **+300 W**,
-  Halten bis Untergrenze **−300 W**; die **Starthysterese** hat der Besitzer am selben Tag
-  auf **100 W** gesenkt (Config + Neustart), die Haltegrenze blieb bei 300 W. Live sichtbar
-  in der Begründung: „below minimum (**1080 W**, 1p)" solange die Wallbox freigibt,
-  „(**1480 W**, 1p)" wenn sie aus ist.
-* **Sicherung zählt nur noch Stopps** (`safety.py`) — Regel oben, `amx` zählte nie.
-* **Test-Attrappe korrigiert** (`tests/test_controller.py`): `car()` setzt `enabled` passend
-  zu `charging`. Vorher beschrieb sie Zustände, die die Hardware nicht hergibt (Strom fließt,
-  ohne dass die Wallbox freigibt) — und verdeckte damit genau diesen Fehler.
-* Live-Beleg nach dem Neustart am 21.09. 06:40: ein `amx=6` (Nachregeln beim Halten), dann
-  **genau ein** `alw=0` nach Ablauf der 180-s-Gnade, danach Ruhe; Zähler 0/5, keine Störung.
-  Stand: **12 Suiten grün** (`test_controller` 94, `test_safety` 33, `test_session_meter`
-  68 Prüfungen).
+## Recently fixed (2026-09-19)
 
-## Zuletzt behoben (19.09.2026)
-
-* **Billigfenster stoppte laufende Ladungen** (`controller.py`). Vorher lautete der Zweig
-  `if mode == cheap_hours and cheap_now and not charger.charging`: sobald das Auto wirklich
-  Strom zog, fiel es in die Überschusslogik, wurde auf 6 A zurückgenommen und nach der
-  180-s-Gnade abgeschaltet — worauf das Fenster es 60 s später neu startete. **Signatur der
-  Nacht 18./19.09. (00:00–03:25 lokal): 40× `alw=0` und 41× `alw=1` im Log, Begründung
-  pendelte zwischen `cheap tariff window` und `surplus -1117 W below minimum (4140 W, 3p)`;
-  je Runde 31 s bei 14 A, 181 s bei 6 A, 88 s aus.** Jetzt hält der Zweig jede laufende
-  Ladung bis zum Fensterende (Kommentar im Code erklärt es, die drei Checks aus der Regel
-  oben pinnen es). Live-Beleg für „der Fix läuft": der Prozessstart muss **jünger** sein als
+* **Cheap-tariff window stopped running charges** (`controller.py`). Before, the branch read
+  `if mode == cheap_hours and cheap_now and not charger.charging`: as soon as the car actually
+  drew current, it fell into the surplus logic, was backed off to 6 A and after the
+  180 s grace switched off — whereupon the window restarted it 60 s later. **Signature of the
+  night of 18/19.09. (00:00–03:25 local): 40× `alw=0` and 41× `alw=1` in the log, reasoning
+  oscillated between `cheap tariff window` and `surplus -1117 W below minimum (4140 W, 3p)`;
+  each round 31 s at 14 A, 181 s at 6 A, 88 s off.** Now the branch holds every running
+  charge until the window ends (a comment in the code explains it, the three checks from the rule
+  above pin it). Live evidence for „the fix is running": the process start must be **younger** than
   `controller.py` — `ps -o lstart= -p $(systemctl --user show evcharge-wt.service -p MainPID --value)`.
-* **Absturzschleife der Lade-App** (11:13–15:19 lokal blind, **1182 Neustarts à ~12 s**,
-  Port 7080 tot). `proxy.py:summary()` normalisierte `now` nicht, während `main.py` es als
-  `proxy_summary(pstats, failures=…)` **ohne** Uhr aufruft. Die Zeile läuft nur, wenn der
-  Proxy einen Fehler-Zeitstempel meldet — der neue Proxy-Build (09:59) liefert
-  `last_upstream_error_at`, der erste Upstream-Fehler um 11:13 machte daraus `float(None)`
-  in jedem Zyklus. Gefixt durch Normalisieren in `summary()`; abgedeckt durch
+* **Crash loop of the charging app** (11:13–15:19 local blind, **1182 restarts at ~12 s**,
+  port 7080 dead). `proxy.py:summary()` did not normalise `now`, while `main.py` calls it as
+  `proxy_summary(pstats, failures=…)` **without** a clock. The line runs only when the
+  proxy reports an error timestamp — the new proxy build (09:59) delivers
+  `last_upstream_error_at`, the first upstream error at 11:13 turned that into `float(None)`
+  in every cycle. Fixed by normalising in `summary()`; covered by
   „the production call shape: summary() without an explicit clock" in `test_proxy_card.py`
-  **plus** einen Live-Check gegen `/status`. Beide Zustände wurden belegt: Fix raus → Test
-  bricht ab, Fix rein → grün. **Lehre für die Zukunft: nach jedem Rebuild des Proxys den
-  Feldsatz von `/status` prüfen und die App-Tests laufen lassen** — ein neues Feld ist ein
-  neuer Codepfad, und auch ein reiner Anzeigepfad reißt die Steuerung mit.
+  **plus** a live check against `/status`. Both states were demonstrated: fix out → test
+  aborts, fix in → green. **Lesson for the future: after every rebuild of the proxy check
+  the field set of `/status` and run the app tests** — a new field is a
+  new code path, and even a pure display path drags the control down with it.
 
-## Offene Punkte
+## Open items
 
-2. Das HA-Lovelace-Dashboard (`/strom-verbrauch`) wurde **nie** im HA selbst visuell
-   geprüft (Login-Wand); Ersatz ist `docs/preview.html`. Das ist die größte offene
-   Unsicherheit im Dashboard-Teil.
-3. Der **Rust-Port der Lade-App ist nicht begonnen** — sie ist der nächste Kandidat,
-   aber erst, wenn ihre Logik stillsteht (Plan bewusst unverändert gelassen).
-4. **SolarEdge meldet oberhalb ~4600 W einphasig zu hoch (Spitze 5533 W)** — Verdacht des
-   Besitzers: das war eine falsch erkannte Phasenzahl, nicht der Wechselrichter. Die
-   Phasenroutine ist seitdem strenger (erst nach ~20 s fließendem Strom geglaubt, dann der
-   höchste Wert bis zum Abstecken; `phases_checked=false`, solange kein Strom fließt) →
-   **beobachten**, ob der Wert wiederkommt.
-5. **Das Halten im Billigfenster ist nur durch Tests belegt, nie nachts am echten Auto
-   gesehen.** Beim nächsten Einsatz von `cheap_hours` (Winter; der Modus steht derzeit auf
-   `pv`, dort ist das Fenster wirkungslos) zu erwarten: **ein** Start beim Öffnen, danach
-   **0 Stopps** bis zum Fensterende, Ladung durchgehend auf `max_current` — der Stopp-Zähler
-   im UI muss bei 0 bleiben. Treten wieder ~12 Stopps pro Stunde auf, ist die alte Bedingung
-   zurückgekommen (Signatur in „Zuletzt behoben") und es ist Code, nicht Hardware; die
-   Sicherung rastet bei 5 Stopps selbst ein und schreibt dann nichts mehr.
-6. **MQTT ist an — erledigt am 25.09.2026.** Der Besitzer hat die Zugangsdaten aus dem
-   Mosquitto-Add-on selbst eingetragen (`set_mqtt_login.py`: fragt mit `getpass` verdeckt ab,
-   schreibt direkt in `ha-app/config.json`, Rechte 600, Sicherung als `.bak`; die Datei ist
-   gitignored). Belegt: direkter CONNACK-Test mit genau dem App-Client → **Code 0 = angenommen**,
-   `mqtt_connected: true`, und in HA **18 Entitäten unter „EV Charger WT", keine ohne Wert**.
-   Zur Vorgeschichte: anonym nimmt der Broker nichts an (CONNACK 5) und der App-Client ist
-   nachweislich korrekt (MQTT-3.1.1-CONNECT geprüft) — der erste Datenversuch des Besitzers wurde
-   mit **Code 5 = nicht autorisiert** abgelehnt, diese Kombination kannte der Broker also nicht.
-   **Zwei Fehler kamen dabei ans Licht — beide in Code, der nie zuvor gelaufen war:**
-   * Die Discovery-Templates für `binary_sensor` „EV charging" und `switch` „control enabled"
-     gaben Jinja-Booleans aus (`False`) — HA erkennt darin weder `ON/OFF` noch `false`, beide
-     Entitäten blieben dauerhaft `unknown`. Jetzt ausgeschrieben, in
-     `tests/test_mqtt_loopback.py` am Quelltext festgenagelt.
-   * **Acht verwaiste retained Discovery-Nachrichten** lagen im Broker: eine ältere Fassung hatte
-     `mode`, `max_current`, `min_current`, `buffer_soc`, `priority_soc`, `plan_energy_kwh` und
-     `decision` als *Sensoren* publiziert (später wurden es *numbers*) plus einen `binary_sensor`
-     statt des `switch`. Sie erzeugen in HA Entitäten ohne Wert. Gelöscht mit
-     `mqtt_discovery_audit.py` (leere Payload, `retain=True`) — HA-Entitäten: **26 → 18**.
-     *Merksatz:* eine retained Discovery-Nachricht überlebt jede Code-Änderung (dieselbe Mechanik
-     wie beim evcc-Rest in Punkt 7, nur im eigenen Gerät). Nach jeder Änderung an
-     `publish_discovery()` lohnt der Audit-Lauf.
-7. **Der evcc-Rest in HA bleibt liegen — der Besitzer räumt ihn selbst auf, „irgendwann mal"**
-   (Entscheidung 23.09.2026, ausdrücklich: *nicht* anfassen, nicht nochmal anbieten).
-   Zum Nachschlagen, was dort liegt: der Integrationseintrag **`evcc_intg` steht auf
-   `setup_retry`** (HA klopft weiter an einen toten Server — der einzige Rest, der noch
-   arbeitet), dazu **97 `evcc_*`-Entities, davon 96 `unavailable`/`restored`** (59 davon sind
-   die go-e-Entities aus evccs MQTT-Discovery). **Es gibt keine evcc-Automation mehr** — die
-   frühere Notiz „Automation EVCC PV Laden ab 8 Uhr an" war veraltet (0 evcc-Automationen,
-   geprüft am 23.09.). Falls er es später doch delegiert: der Weg wäre
-   `DELETE /api/config/config_entries/entry/<entry_id>` (existiert nachweislich — mit einer
-   erfundenen ID geprüft, sauberes 404 „Invalid entry specified" statt 405); die 59
-   MQTT-Entities gingen damit **nicht** weg, die hängen als retained Discovery-Nachrichten im
-   Broker und brauchen geleerte Topics (`mqtt.publish` mit leerer Payload und `retain` — über
-   HA selbst möglich, ohne Broker-Login).
-8. **Dashboard-Zeilen umstellen** (nach Punkt 6): die toten `sensor.evcc_*`-Zeilen im
-   HA-POWER-DASHBOARD auf die dann vorhandenen Entities der eigenen App zeigen lassen.
-9. **Auch der Deye-Poller soll später auf MQTT umgestellt werden** (Wunsch des Besitzers,
-   20.09.2026). Heute publiziert er über HA selbst (`POST /api/services/mqtt/publish`,
-   Token aus `~/.hermes/.env`, Routinen in `powerdash/deye_pv.py` und `deye-pv-rs/src/ha.rs`)
-   — das braucht keinen Broker-Login, kann aber nur senden. Umstellung, wenn der Broker-Login
-   zugänglich ist (Punkt 6), damit im Haus **ein** Muster für alle Veröffentlicher gilt.
-   Der dafür vorbereitete, wieder verworfene Weg (HA-REST-Publish, read-only, kein
-   Broker-Login) liegt geparkt in `ha-app/local-tools/mqtt-via-ha-rest/` — er wurde nicht
-   genommen, weil damit die **Steuerung aus HA heraus verloren geht** (die App kann über
-   diesen Weg nur senden, nicht empfangen; Modus, Stromgrenzen und SOC-Schwellen leben in
-   der eigenen Web-UI und über `set/#`-Topics).
+2. The HA Lovelace dashboard (`/strom-verbrauch`) was **never** visually checked in HA itself
+   (login wall); the substitute is `docs/preview.html`. This is the biggest open
+   uncertainty in the dashboard part.
+3. The **Rust port of the charging app has not been started** — it is the next candidate,
+   but only once its logic is settled (the plan deliberately left unchanged).
+4. **SolarEdge reports too high single-phase above ~4600 W (peak 5533 W)** — the owner's
+   suspicion: that was a wrongly detected phase count, not the inverter. The
+   phase routine has been stricter since then (believed only after ~20 s of flowing current, then the
+   highest value until unplugging; `phases_checked=false` as long as no current flows) →
+   **observe** whether the value returns.
+5. **The hold in the cheap-tariff window is proven only by tests, never seen at night on the real
+   car.** At the next use of `cheap_hours` (winter; the mode is currently set to
+   `pv`, where the window has no effect), expect: **one** start at opening, then
+   **0 stops** until the window ends, charging throughout at `max_current` — the stop counter
+   in the UI must stay at 0. If ~12 stops per hour occur again, the old condition
+   has returned (signature in „Recently fixed") and it is code, not hardware; the
+   safety latches itself at 5 stops and then writes nothing more.
+6. **MQTT is on — done on 2026-09-25.** The owner entered the credentials from the
+   Mosquitto add-on himself (`set_mqtt_login.py`: prompts masked with `getpass`,
+   writes directly into `ha-app/config.json`, permissions 600, backup as `.bak`; the file is
+   gitignored). Proven: direct CONNACK test with exactly the app client → **code 0 = accepted**,
+   `mqtt_connected: true`, and in HA **18 entities under „EV Charger WT", none without a value**.
+   On the backstory: anonymously the broker accepts nothing (CONNACK 5) and the app client is
+   demonstrably correct (MQTT-3.1.1-CONNECT checked) — the owner's first data attempt was
+   rejected with **code 5 = not authorised**, so the broker did not know this combination.
+   **Two faults came to light in the process — both in code that had never run before:**
+   * The discovery templates for `binary_sensor` „EV charging" and `switch` „control enabled"
+     emitted Jinja booleans (`False`) — HA recognises in them neither `ON/OFF` nor `false`, both
+     entities stayed permanently `unknown`. Now written out, pinned in
+     `tests/test_mqtt_loopback.py` against the source text.
+   * **Eight orphaned retained discovery messages** were lying in the broker: an older version had
+     published `mode`, `max_current`, `min_current`, `buffer_soc`, `priority_soc`, `plan_energy_kwh` and
+     `decision` as *sensors* (later they became *numbers*) plus a `binary_sensor`
+     instead of the `switch`. They create entities without a value in HA. Deleted with
+     `mqtt_discovery_audit.py` (empty payload, `retain=True`) — HA entities: **26 → 18**.
+     *Mnemonic:* a retained discovery message survives every code change (the same mechanics
+     as with the evcc remnant in item 7, only in our own device). After every change to
+     `publish_discovery()` the audit run is worth it.
+7. **The evcc remnant in HA stays — the owner cleans it up himself, „irgendwann mal" (some time or other)**
+   (decision 2026-09-23, explicitly: do *not* touch it, do not offer it again).
+   For reference, what is lying there: the integration entry **`evcc_intg` is on
+   `setup_retry`** (HA keeps knocking on a dead server — the only remnant still
+   working), plus **97 `evcc_*` entities, of which 96 `unavailable`/`restored`** (59 of them are
+   the go-e entities from evcc's MQTT discovery). **There is no evcc automation any more** — the
+   earlier note „Automation EVCC PV Laden ab 8 Uhr an" (Automation EVCC PV charging on from 8 o'clock) was outdated (0 evcc automations,
+   checked on 23.09.). If he delegates it after all later: the way would be
+   `DELETE /api/config/config_entries/entry/<entry_id>` (demonstrably exists — checked with an
+   invented ID, clean 404 „Invalid entry specified" instead of 405); the 59
+   MQTT entities would **not** go away with that, they hang as retained discovery messages in the
+   broker and need emptied topics (`mqtt.publish` with empty payload and `retain` — possible via
+   HA itself, without a broker login).
+8. **Switch over dashboard rows** (after item 6): point the dead `sensor.evcc_*` rows in the
+   HA POWER DASHBOARD at the entities of our own app that will then exist.
+9. **The Deye poller should also be switched to MQTT later** (the owner's wish,
+   2026-09-20). Today it publishes via HA itself (`POST /api/services/mqtt/publish`,
+   token from `~/.hermes/.env`, routines in `powerdash/deye_pv.py` and `deye-pv-rs/src/ha.rs`)
+   — that needs no broker login, but can only send. Switch-over when the broker login
+   is accessible (item 6), so that **one** pattern applies in the house for all publishers.
+   The path prepared for that and then discarded again (HA REST publish, read-only, no
+   broker login) lies parked in `ha-app/local-tools/mqtt-via-ha-rest/` — it was not
+   taken, because with it the **control out of HA is lost** (the app can via
+   this path only send, not receive; mode, current limits and SOC thresholds live in
+   its own web UI and via `set/#` topics).
 
-11. ~~SDM630-Polling~~ **geklärt (22.09.2026): der SDM630 wird einwandfrei gepollt.** Die
-    alten Zeitstempel sind korrekt — ein Zähler, der sich nicht ändert, wird von HA **nicht**
-    neu geschrieben. Beweis: die Spannungssensoren (`sdm630_l1/l2/l3_spannung`) und die
-    Frequenz ändern sich **alle ~15 s** (237,83 -> 237,41 V in 75 s). **Lehre für die
-    Frische-Prüfung: ein bewegter Wert muss es sein** — Spannung ja, Leistung/Strom **nein**
-    (nachts 0,00 W / 0,0 A, wird nie neu geschrieben, sieht wie ein toter Zähler aus).
-    `sdm.entity_live` steht deshalb auf `sensor.sdm630_l1_spannung`.
-    **Ebenfalls normal:** die **Garage-PV (Deye, 192.168.178.33:8899) ist nachts nicht
-    erreichbar** — ein Mikro-Wechselrichter wird von der Sonne versorgt. Letzte erfolgreiche
-    Zeile 21.09. **17:38 UTC**, Sonnenuntergang Berlin war 19:40 MESZ = 17:40 UTC; sie kommt
-    nach Sonnenaufgang von selbst zurück. **Kleiner offener Punkt:** der Poller schreibt dann
-    jede Nacht alle 33 s `ERROR ... Host is unreachable` (~2600 Zeilen) — auf eine Zeile je
-    Stunde drosseln oder zwischen Dämmerung und Sonnenaufgang schweigen.
+11. ~~SDM630 polling~~ **resolved (2026-09-22): the SDM630 is polled perfectly.** The
+    old timestamps are correct — a meter that does not change is **not** re-written by
+    HA. Proof: the voltage sensors (`sdm630_l1/l2/l3_spannung`) and the
+    frequency change **every ~15 s** (237.83 -> 237.41 V in 75 s). **Lesson for the
+    freshness check: it must be a moving value** — voltage yes, power/current **no**
+    (at night 0.00 W / 0.0 A, is never re-written, looks like a dead meter).
+    `sdm.entity_live` is therefore set to `sensor.sdm630_l1_spannung`.
+    **Also normal:** the **garage PV (Deye, 192.168.178.33:8899) is not reachable at night**
+    — a micro-inverter is supplied by the sun. Last successful
+    record 21.09. **17:38 UTC**, Berlin sunset was 19:40 CEST = 17:40 UTC; it comes
+    back by itself after sunrise. **Minor open item:** the poller then writes
+    every night every 33 s `ERROR ... Host is unreachable` (~2600 lines) — throttle to one line per
+    hour or stay silent between dusk and sunrise.
 
-## Bekannte Messanomalien der Umgebung
+## Known measurement anomalies of the environment
 
-Nicht unsere Baustelle, aber beim Lesen von Zahlen bedenken: `sensor.garage_pv_energie`
-fällt 8× aus; `sensor.evcc_battery_power` ist `unavailable` (Rest der stillgelegten Steuerung, in HA `restored`); der Deye-Wert ist ~4 min
-alt; `ElektroHeizungKeller` + Sensoren `unavailable`; der Rust-Deye-Poller kann kein
-https zur HA-Verbindung.
+Not our concern, but bear in mind when reading numbers: `sensor.garage_pv_energie`
+drops out 8×; `sensor.evcc_battery_power` is `unavailable` (remnant of the decommissioned control, in HA `restored`); the Deye value is ~4 min
+old; `ElektroHeizungKeller` + sensors `unavailable`; the Rust Deye poller cannot do
+https to the HA connection.
 
-## Wie man prüft (erprobte Befehle)
+## How to check (proven commands)
 
 ```sh
 cd /home/adermake/EV-CHARGER-WT-HA/ha-app
 for t in test_safety test_controller test_phase_probe test_service_smoke test_proxy_card \
          test_goe_driver test_ha_read test_site_cadence test_cheap_hours; do
   python3 tests/$t.py; done
-python3 /tmp/health.py                      # Live-Lage in ~10 Zeilen
-curl -s 127.0.0.1:7080/api/state            # dieselbe Lage als JSON
-curl -s 127.0.0.1:1504/status               # Proxy-Statistik
-cd ../modbus-proxy-rs && make check         # cargo + Konformität + Kreuzvergleich + Differential + Produktivconfig
+python3 /tmp/health.py                      # live situation in ~10 lines
+curl -s 127.0.0.1:7080/api/state            # the same situation as JSON
+curl -s 127.0.0.1:1504/status               # proxy statistics
+cd ../modbus-proxy-rs && make check         # cargo + conformance + cross-comparison + differential + production config
 ```
 
-Wichtig beim Installieren des Proxys: `make static install` scheitert mit "Text file
-busy", solange er läuft → **stoppen, installieren, starten**. Und: installierte Binärdatei
-gegen den Build prüfen (`sha256sum bin/muxproxy`), nicht annehmen.
+Important when installing the proxy: `make static install` fails with "Text file
+busy" as long as it runs → **stop, install, start**. And: check the installed binary
+against the build (`sha256sum bin/muxproxy`), do not assume.
 
-## Rollback auf den direkten Weg (Consumer ohne Proxy)
+## Rollback to the direct path (consumer without proxy)
 
 ```sh
 systemctl --user disable --now muxproxy-rs.service
 ```
 
-Danach beim Consumer (Laderegler bzw. wer auch immer die Meter liest) die Meter-Konfiguration
-zurück auf `192.168.178.84:1502` zeigen lassen und ihn neu starten — **Consumer vorher
-stoppen und alle Meter in einem Schritt umstellen**, sonst validiert er eine halb geänderte
-Konfiguration gegen das Gerät und speichert sie nicht.
+Then on the consumer (charge controller or whoever reads the meters) have the meter configuration
+point back to `192.168.178.84:1502` and restart it — **stop the consumer beforehand
+and switch all meters in one step**, otherwise it validates a half-changed
+configuration against the device and does not save it.
 
-Das frühere Werkzeug dafür (`set_evcc_meter_host.py`, schrieb direkt in die SQLite des alten
-Controllers) ist aus dem Proxy-Repo entfernt, weil es ausschließlich ihn bediente; es liegt lokal unter
-`modbus-proxy-rs/local-tools/` und wird nicht versioniert.
+The earlier tool for this (`set_evcc_meter_host.py`, wrote directly into the SQLite of the old
+controller) has been removed from the proxy repo, because it served exclusively that; it lies locally under
+`modbus-proxy-rs/local-tools/` and is not versioned.
 
-## Repositories (öffentlich, MIT)
+## Repositories (public, MIT)
 
-Vier Repos, alle **an Ort und Stelle** initialisiert (`git init` in den bestehenden
-Verzeichnissen), damit die laufenden Units ihre Pfade behalten. Branch `main`, Identität nur
-lokal pro Repo (`trwa <me@home>` — verknüpft die Commits *nicht* mit dem GitHub-Konto),
-Remote vorbereitet. **Alle vier sind seit 20.09.2026 öffentlich auf GitHub** (Account
-`machtnichts`, MIT, Copyright `nixda`):
+Four repos, all initialised **in place** (`git init` in the existing
+directories) so that the running units keep their paths. Branch `main`, identity only
+local per repo (`trwa <me@home>` — does *not* link the commits to the GitHub account),
+remote prepared. **All four have been public on GitHub since 2026-09-20** (account
+`machtnichts`, MIT, copyright `nixda`):
 
-| Repo | Pfad | Commit | Dateien |
+| Repo | Path | Commit | Files |
 |---|---|---|---|
 | `modbus-proxy-rs` | `modbus-proxy-rs/` | `778db32` | 30 |
 | `evcharge` | `ha-app/` | `a381fdb` | 35 |
 | `ha-power-dashboard` | `~/HA-POWER-DASHBOARD` | `e3884ee` | 72 |
-| `ev-charger-wt-ha` | dieses Verzeichnis | `ff71f9f` | 26 |
+| `ev-charger-wt-ha` | this directory | `ff71f9f` | 26 |
 
-Verifiziert per frischem Klon von GitHub (Dateibestand, Lizenz, keine unerwünschten Dateien);
-`evcharge` zusätzlich mit komplettem Testlauf aus dem Klon (76 Checks grün). Rust-Builds aus
-dem Klon wurden **nicht** ausgeführt — dafür fehlt hier ein `cargo build`-Lauf, die
-Konformitätstests im Repo selbst bleiben die Referenz.
+Verified by a fresh clone from GitHub (file inventory, licence, no unwanted files);
+`evcharge` additionally with a complete test run from the clone (76 checks green). Rust builds from
+the clone were **not** run — a `cargo build` run is missing here for that, the
+conformance tests in the repo itself remain the reference.
 
-Weitere Änderungen wie gewohnt: `git add` / `git commit` / `git push` in dem jeweiligen
-Verzeichnis; die Arbeitskopien verfolgen `origin/main`.
+Further changes as usual: `git add` / `git commit` / `git push` in the respective
+directory; the working copies track `origin/main`.
 
-**Bewusst nicht im Repo**: `bin/` (gebautes Binary), `target/`, `.venv/`, `logs/`,
-`__pycache__/`, die Live-`config.json` des Reglers (stattdessen `config.example.json`) und
-`NOTES-local.md` in allen vier Repos.
+**Deliberately not in the repo**: `bin/` (built binary), `target/`, `.venv/`, `logs/`,
+`__pycache__/`, the controller's live `config.json` (instead `config.example.json`) and
+`NOTES-local.md` in all four repos.
 
-**evcc-Bezüge**: aus dem **Laderegler** vollständig entfernt (Kommentare, Docstrings,
-UI-Tooltips, Test-Labels); die Substanz — drei Batterie-Bänder, `bufferSoc`/`prioritySoc`,
-das 3-Phasen-Minimum — steht in `ha-app/NOTES-local.md` (nicht committet). Der **Proxy** wurde
-ebenso generalisiert („Modbus consumer", `config/muxproxy.json`, die drei evcc-Werkzeuge nach
-`local-tools/`), und die **Werkzeuge dieses Repos**, die evccs API oder CSVs brauchten, liegen
-jetzt ebenfalls in `local-tools/` (nicht versioniert) — evcc läuft nie wieder.
+**evcc references**: completely removed from the **charge controller** (comments, docstrings,
+UI tooltips, test labels); the substance — three battery bands, `bufferSoc`/`prioritySoc`,
+the 3-phase minimum — is in `ha-app/NOTES-local.md` (not committed). The **proxy** was
+likewise generalised ("Modbus consumer", `config/muxproxy.json`, the three evcc tools to
+`local-tools/`), and the **tools of this repo** that needed evcc's API or CSVs lie
+now likewise in `local-tools/` (not versioned) — evcc never runs again.
 
-**Verifikation läuft ab jetzt gegen die eigene App**, nicht gegen einen Fremd-Controller:
-`curl -s 127.0.0.1:7080/api/state` (Lage) · `tests/` der App · `curl -s 127.0.0.1:1504/status`
-(Proxy) · `make check` im Proxy-Repo (Konformität gegen den Stub).
+**Verification now runs against the own app**, not against a third-party controller:
+`curl -s 127.0.0.1:7080/api/state` (state) · `tests/` of the app · `curl -s 127.0.0.1:1504/status`
+(proxy) · `make check` in the proxy repo (conformance against the stub).
 
-**Stand 20.09.2026: alle vier sind veröffentlicht und die Historie ist geglättet** — je
-**ein** Commit pro Repo (`evcharge a381fdb`, `modbus-proxy-rs 8fbd4c1`, `ev-charger-wt-ha
-a4d0806`, `ha-power-dashboard e3884ee`), gepusht mit `--force` nach Orphan-Branch-Umschrieb,
-alte Objekte lokal per `reflog expire` + `gc --prune=now` entfernt. `modbus-proxy-rs` wurde
-am 20.09. **gelöscht und leer neu angelegt** und frisch gepusht, weil sein erster
-Import-Commit beim Server noch per exaktem SHA abrufbar war; danach war er es nicht mehr.
-Nachprüfen lässt sich so etwas nur mit dem exakten Hash:
+**As of 2026-09-20: all four are published and the history is smoothed** —
+**one** commit per repo (`evcharge a381fdb`, `modbus-proxy-rs 8fbd4c1`, `ev-charger-wt-ha
+a4d0806`, `ha-power-dashboard e3884ee`), pushed with `--force` after orphan-branch rewrite,
+old objects removed locally via `reflog expire` + `gc --prune=now`. `modbus-proxy-rs` was
+**deleted and recreated empty** on 20.09 and pushed fresh, because its first
+import commit was still retrievable on the server by exact SHA; afterwards it no longer was.
+Something like that can only be re-checked with the exact hash:
 
 ```sh
 git -C /home/adermake/EV-CHARGER-WT-HA/modbus-proxy-rs fetch --depth=1 origin 778db32 && echo "noch da" || echo "weg"
 ```
 
-Ein frischer Klon des Repos muss außerdem **selbst bauen und testen**:
-`git clone … && cd modbus-proxy-rs && cargo test --offline` → 12 Tests, 0 Fehler (das Repo
-ist dependency-frei).
+A fresh clone of the repo must also **build and test itself**:
+`git clone … && cd modbus-proxy-rs && cargo test --offline` → 12 tests, 0 errors (the repo
+is dependency-free).
 
-## Wo die Wahrheit liegt
+## Where the truth lies
 
-* `README.md` (Projekt), `docs/INSTALL.md`, `docs/REGISTERS.md` (Registerkarte, 203 =
-  Netz-Zähler), `docs/preview.html` (Dashboard-Vorschau).
-* Logs: `logs/evcharge.log` (Herzschläge + Schalt-Schreibzugriffe), `logs/evcharge.stdout`
-  (Tracebacks). Der Proxy schreibt nach stdout in eine Datei, nicht ins Journal.
-* `ha-app/config.json` — Intervalle, Reserve, `phases`, `proxy_status`, `safety`, und die
-  persistierten Einstellungen (`.bak` bleibt erhalten).
-* Skills (Prozedurwissen, laden sich bei Bedarf): `ev-charging-control`,
+* `README.md` (project), `docs/INSTALL.md`, `docs/REGISTERS.md` (register map, 203 =
+  grid meter), `docs/preview.html` (dashboard preview).
+* Logs: `logs/evcharge.log` (heartbeats + switching writes), `logs/evcharge.stdout`
+  (tracebacks). The proxy writes to stdout into a file, not to the journal.
+* `ha-app/config.json` — intervals, reserve, `phases`, `proxy_status`, `safety`, and the
+  persisted settings (`.bak` is retained).
+* Skills (procedural knowledge, load as needed): `ev-charging-control`,
   `modbus-single-client-proxy`, `goe-charger-http-api`, `solaredge-sunspec-modbus`,
   `home-assistant-integration`, `port-verification`.
 
-## Die eine Regel für neue Sitzungen
+## The one rule for new sessions
 
-Erst diese Datei lesen, dann `python3 /tmp/health.py`, dann erst etwas ändern. Der
-Wechselrichter ist empfindlich, das Auto teuer, und der Besitzer merkt es, wenn Zahlen
-nicht belegt sind.
+First read this file, then `python3 /tmp/health.py`, only then change anything. The
+inverter is sensitive, the car expensive, and the owner notices when numbers
+are not backed by evidence.

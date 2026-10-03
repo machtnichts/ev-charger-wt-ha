@@ -68,7 +68,6 @@ still managing the charger will fight it for the charger — see the cutover bel
                              instead of switching it off, until the SOC is back at the
                              buffer. A charge is never started on battery energy.
     cheap_hours      00:00-05:00  (grid 0.18 vs 0.28 EUR/kWh) - used by mode cheap_hours only
-    plan_energy_kwh + plan_deadline   "charge 10 kWh by 07:30", continuous top-up
     residual_power_w        deliberate reserve held back below the surplus; 0 on this
                             plant, because the meter reading already carries the house
 
