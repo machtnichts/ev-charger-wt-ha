@@ -312,7 +312,12 @@ by not carrying a connection across the idle stretch.**
   connection stays open, only the device session is renewed. The app's proxy card reads
   `PROXY OK`, 6 reads, 0 errors, site value fresh (671.8 W).
 * **Still to do:** (a) watch `upstream_errors` over the next days — it must stay flat while
-  `upstream_idle_closes` climbs (~one per read cycle); (b) the baseline in
+  `upstream_idle_closes` climbs, one per read burst. A burst lands every **~60 s**, not every
+  30 s as `interval_s` suggests: measured 2026-10-03, upstream connections 59.98 / 60.08 /
+  60.02 s apart, because the app's "due" test is measured from the *end* of the previous read
+  and that read takes ~2.5 s (three windows at the proxy's `min_request_gap` of 1 s). So the
+  counter should reach ~1440/day, not the ~2880 a true 30 s cadence would give — and that same
+  ~2.5 s is why `idle_close_s` has to sit above ~3 s; (b) the baseline in
   `baseline/muxproxy` is still the 19.09 build, i.e. this change's yardstick — once the
   counters have been clean for a day, `make baseline` moves it to this build; (c)
   `upstream_idle_closes` is in `/metrics` but not surfaced in the app's card yet.
@@ -333,7 +338,8 @@ a reason that still exists.**
   **zero** and what remains is the app's own three windows: `32@40071` (964), `53@40190` (14),
   `18@57716` (15). Day by day in the app era: 18.09. 39, then 1–3/day to 24.09., a burst of
   40/72/239/241/70/71/85 on 25.09.–01.10., then 3 and 1 on 02./03.10. — roughly **1–3 lost
-  cycles per day** out of ~2880, and each one costs the app the cycle.
+  cycles per day** out of ~1440 site reads (the app reads the site every ~60 s, see below),
+  and each one costs the app the cycle.
 * **The mechanism, from the code — not a register count.** The proxy takes the upstream answer
   with `read_exact` (`src/upstream.rs:230/244`); a short frame followed by close surfaces as
   Rust's `failed to fill whole buffer` (UnexpectedEof). A device that *refuses* a quantity
