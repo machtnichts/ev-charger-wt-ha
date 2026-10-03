@@ -2,20 +2,31 @@
 
 ## 1. The proxy (on this host, knetzwerk)
 
-The proxy must own the inverter connection before anything else reads the plant.
+The proxy must own the inverter connection before anything else reads the plant. It is the
+Rust binary; the Python implementation it was ported from is kept in the same repository
+under `reference/` for verification only (steps 1b, if ever needed).
 
-    # start it now
-    python3 /home/adermake/EV-CHARGER-WT-HA/modbus-proxy/muxproxy.py
+    # build it (glibc, or `make static` for the fully static binary the unit expects)
+    cd /home/adermake/EV-CHARGER-WT-HA/modbus-proxy-rs
+    make static && make install          # -> bin/muxproxy
+
+    # start it now (its own config, not the reference's)
+    ./bin/muxproxy -c config/muxproxy.json
 
     # make it permanent (user service, no sudo needed)
     mkdir -p ~/.config/systemd/user
-    cp /home/adermake/EV-CHARGER-WT-HA/modbus-proxy/systemd/*.service ~/.config/systemd/user/
+    cp /home/adermake/EV-CHARGER-WT-HA/modbus-proxy-rs/deploy/muxproxy-rs.service ~/.config/systemd/user/
     systemctl --user daemon-reload
-    systemctl --user enable --now evcharge-modbus-proxy
-    systemctl --user status evcharge-modbus-proxy
+    systemctl --user enable --now muxproxy-rs
+    systemctl --user status muxproxy-rs
 
     # survive logout / reboot (needs sudo once, so the user has to run it)
     sudo loginctl enable-linger adermake
+
+1b. The Python reference (only for comparisons, never for the plant):
+
+    cd /home/adermake/EV-CHARGER-WT-HA/modbus-proxy-rs && make check
+    # or on its own: python3 reference/muxproxy.py -c reference/config.json
 
 Health check:
 
@@ -84,4 +95,4 @@ writes to the inverter.
 
 * Set `control_enabled: false` (app stops writing to the charger).
 * Point the consumer back at 192.168.178.84:1502 and restart it.
-* Stop `evcharge-modbus-proxy`; the inverter is then unowned again.
+* Stop `muxproxy-rs`; the inverter is then unowned again.

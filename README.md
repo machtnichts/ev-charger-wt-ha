@@ -12,10 +12,13 @@ in from a generic EV charging app is the behaviour, not the code.
 The SolarEdge inverter accepts **one** Modbus/TCP client and starts producing
 errors when several poll it. So:
 
-    1. modbus-proxy/  - the single Modbus client. Polls the inverter on a fixed
-                        schedule, caches the registers, and serves any number of
-                        readers. Validates every block so a flaky inverter
-                        response cannot silently corrupt a reading.
+    1. modbus-proxy-rs/ - the single Modbus client (Rust, static binary). Polls the
+                        inverter on a fixed schedule, caches the registers, and
+                        serves any number of readers. Validates every block so a
+                        flaky inverter response cannot silently corrupt a reading.
+                        The original Python implementation it was ported from and
+                        differentially verified against is kept inside that repo as
+                        `reference/` - it is not what runs here.
     2. ha-app/        - the charging logic (reads the proxy, drives the go-e),
                         packaged as a Home Assistant add-on, with a web UI, a
                         REST API and MQTT discovery.
@@ -204,17 +207,18 @@ current limit) and reports which endpoint answered.
 
 See `docs/INSTALL.md`. In short:
 
-* proxy: user systemd unit (`modbus-proxy/systemd/`), needs `loginctl
-  enable-linger` once so it survives logout;
+* proxy: user systemd unit (`modbus-proxy-rs/deploy/muxproxy-rs.service`; the static
+  binary is built with `make static` and installed to `bin/muxproxy`), needs
+  `loginctl enable-linger` once so it survives logout;
 * app: copy `ha-app/` into the Home Assistant add-on folder (`/addons/evcharge_wt`
   on HAOS, reachable via the SSH or Samba add-on), then install it from the
   add-on store as a local add-on.
 
 ## Tools
 
-`modbus-proxy/tools/` holds the instruments used to build this, kept because they
-are the fastest way to re-verify after any change — all of them run without any
-other service being up:
+The instruments used to build this live with the Python reference in the proxy repo,
+under `modbus-proxy-rs/reference/tools/` — kept because they are the fastest way to
+re-verify after any change, and all of them run without any other service being up:
 
     discover_sunspec.py       walk the SunSpec chain and dump the model map
     site_decode.py            authoritative decoder (used by the app)
@@ -229,17 +233,22 @@ proxy's counters) and `make check` in the proxy repository.
 
 ## Caveats
 
-* MQTT was tested against a loopback broker, not against a real Mosquitto —
-  no broker is running on this network yet.
-* Battery control registers (0xE00D / 0xE010) are implemented but unused and
-  untested; the current strategy never writes to the inverter.
-* The go-e `set` path (`/set?amp=`, `/set?frc=`) is implemented but has not been
-  exercised against the charger, because another controller owned it at the time.
+* MQTT runs against the broker on this network (discovery + state are live); the
+  loopback test in `ha-app/tests/test_mqtt_loopback.py` covers the client itself
+  without a broker.
+* The inverter is written to nowhere: the battery-control registers (0xE00D /
+  0xE010) and the Modbus write primitives were removed, and
+  `ha-app/tests/test_solaredge_decode.py` pins that structurally. Written is the
+  **wallbox** (current, enable, neutral position), through one channel only.
+* The go-e write path is in daily use (`amx=` follows the surplus); the proxy's
+  `upstream_writes` counter has stayed 0 since the app took over the control.
 
 ## Repositories
 
-This tree is the project documentation plus the Python reference proxy. The two apps live
-in their own repositories, so each can be versioned and read on its own:
+This tree is the project documentation. The two apps live
+in their own repositories, so each can be versioned and read on its own — including the
+Python reference proxy, which moved into the Rust repo as `modbus-proxy-rs/reference/`
+on 2026-10-03 so that the port and the implementation it was verified against sit together:
 
 | Repo | Contents |
 |---|---|
