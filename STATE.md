@@ -221,8 +221,16 @@ is never believed.
     `_surplus_phrase`) and the figure is the car's own draw plus the battery's intake - so the row now
     says what the number is, with a tooltip spelling it out. The field `surplus_w`, the MQTT entity
     `ev_surplus` ("PV surplus for EV") and the log lines keep their names: those are the API surface.
-    **Still open:** the third phrase variant reads "roof covers N W" although N includes the battery's
-    intake and can therefore exceed what the roof actually makes (measured 3078 W against 2861 W DC).
+    The third phrase variant said "roof covers N W" although N can exceed what the roof makes, so
+    the battery is now named when it is part of the figure - see the next bullet.
+  * **The reason string names the battery when the battery is in the figure.** On the owner's
+    wording the third variant is now **"no surplus - pv+battery covers N W"**, and only when the
+    battery's intake really is in the number: below `priority_soc` the battery keeps its charge
+    and the roof alone is named, and the case where it is *carrying* the car stays as it was.
+    The share rule now lives in ONE helper (`_battery_share_w`) feeding both the surplus maths
+    and the message, so the two cannot drift apart; four new checks pin all four variants in
+    `test_controller.py` (103 checks, up from 97). Verified live: `pv: no surplus - pv+battery
+    covers ... W -> ... A (1p)`.
   * **Rollback:** `.backup-forecast-20261004/` in the project root holds `evcharge/`, `tests/` and both
     config files exactly as they were before the cut. `ha-app` is not under git, so that folder is the
     only way back.
