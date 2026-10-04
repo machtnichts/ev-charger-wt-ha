@@ -184,99 +184,34 @@ is never believed.
 * **House time is not host time**: The host runs UTC, desired wall-clock times are expressed
   in `Europe/Berlin` (`Settings.timezone`, IANA name, daylight-saving-safe).
 
-## PV forecast — step 1: display only (2026-09-23)
+## Recently fixed (2026-10-04)
 
-The owner wants the **car** to have priority in the morning and the **battery** in the
-afternoon — decided by weather, not by time of day. This requires a local forecast.
-**What is built is step 1: the forecast is displayed and logged daily; it controls
-NOTHING.** That way he can first judge whether such a forecast is any good for his roof.
-
-* **Source:** Open-Meteo, `global_tilted_irradiance` per roof surface, without a key, one request
-  per hour and surface. Three surfaces, as the owner corrected them: **4.48 kWp east
-  (az −90, 14 modules)**, **1.60 kWp west roof (az +90, 5 modules)** and **1.92 kWp west dormer
-  (az +90, 6 modules, flatter than the roof)**. The location is **the exact point of the
-  plant** — it is in Home Assistant and in the local `config.json` and deliberately **not**
-  in this repo (previously the postcode centre stood here, which was 820 m off and today forecast 0.2 kWh
-  less). Calculation: `GTI (W/m²) x kWp = Wh` per hour (DC side), `x PR 0.85`
-  = AC expectation.
-* **Evidenced against seven days with 15-minute exports from the SE portal** (2026-09-24; each file
-  sums exactly to the portal day value, the timestamps are local time — checked by correlating the
-  day shape against the forecast, not assumed). Forecast against the afternoon
-  (12–18 h, from the 15-minute values):
-  05.09 **33.1 kWh forecast / 18.8 kWh afternoon**; 06.09 **33.2 / 19.2**; 08.09 **31.3 / 17.9**
-  — three days above **88 % of the daily ceiling**, three times a **strong** afternoon.
-  21.09 25.4 / 14.1; 07.09 26.4 / 13.3; 10.09 27.8 / **8.9** — three days at **71–78 %**,
-  three times medium to weak. **Between 14.1 and 17.9 kWh there is not a single observation** —
-  the two groups do not overlap. From this follows the threshold: not 70 %, but
-  **~88–90 %**. With 90 % of the 30-day best value the rule gets **7 of 7** days right.
-* **Refuted: the day-factor correction** (that is, the earlier idea in this section). 08.09 and
-  10.09 are mirror images: on 08.09 the morning was **dead** (2.56 of 6.88 kWh) and the
-  afternoon **strong** (1.13-fold); on 10.09 the morning was **exactly as forecast** (0.98)
-  and the afternoon collapsed to **0.51**. The morning therefore says nothing about the afternoon —
-  in *no* direction. A day factor formed at 12 o'clock would have said "all is well" on 10.09
-  and let the battery run empty in favour of the car. The factor is now only **recorded along**,
-  no longer followed.
-* **Side finding that explains the calibration:** over 23 days the forecast day total looked
-  unbiased (mean 1.008) — but the **evening** (battery discharge, 1.13- to 1.58-fold) concealed
-  that the **afternoon** on average delivers only **0.71** of the forecast. For this rule the
-  afternoon counts, not the day total: **the day total works as a display, not as a statement about the
-  day shape.** That is why the day shape (morning/midday/afternoon/evening) is now part of every
-  day record.
-* **The shape of the measured values comes from the hourly log** (`logs/pv_hourly.csv`, cumulative per
-  hour) — it exists precisely for this reason, before the rule exists.
-* **Pin (the promise of step 1):** the controller **does not know the word `forecast`**
-  (`tests/test_pv_forecast.py` checks this, plus: the module has no actuator vocabulary). The
-  forecast *cannot* switch anything as long as this check is green.
-* **The factor `factor()`** = measured today / forecast for exactly this window, only with
-  a real basis: below **0.05 kWh** measurement there is **no** factor (the day has not yet
-  started — silent), outside **0.25–1.60** a warning and likewise none. No factor
-  means: the later charge controller falls back to the sun-position-relative fallback, never to
-  guessed numbers.
-* **Data — all on disk, nothing only in memory** (a restart must not cost the history):
-  `logs/pv_forecast_today.json` is continuously overwritten (a restart continues the day),
-  `logs/pv_forecast.csv` gets **one row per completed day**: forecast (total **and** in
-  four day sections), both measured values (AC and array side), both factors,
-  house/car/battery energy, SOC range, `samples` — and the rule columns `best30_kwh` (reference),
-  `best30_threshold_kwh`, `best30_pct`, `rule_best_says` (rule B) and `rule_margin_says` (rule A).
-  Plus `logs/pv_days_seed.csv` with the **22 day values from the PV portal export**, so that the
-  30-day reference exists immediately after a restart (currently the best value **33.498 kWh** from
-  06.09).
-  **Since 25.09 the garage meter is also in the row** (`sdm_import_kwh`, `sdm_export_kwh`
-  and the day difference `sdm_import_day_kwh`/`sdm_export_day_kwh`) — that is the owner's
-  reference for the car. Reason: on **23.09 19.38 kWh went into the car**, while the service was not yet
-  running; the day record books `car_kwh 0.0` there. Carrying the meter along in the same row
-  makes such gaps visible instead of finding them by hand weeks later (sum 22.–25.09:
-  **29.22 kWh** at the meter against 7.63 kWh in the app count). The day difference arises from the
-  last completion; on the first day it stays empty instead of guessed.
-* **`samples` is important:** the day values are a zero-order-hold reading, they inherit the
-  inverter's read cadence (with car every ~5 s, without car deliberately throttled — the
-  rule "no additional poll traffic" also applies here). With stale measured values
-  the charge controller integrates **nothing** (stale gate), instead of continuing to count old values.
-* **Production now comes from the inverter meter, not from an integral**
-  (2026-09-23): SunSpec model 101 `WH` (word 22/23, scale factor at 24) lies **within
-  the window that is read anyway** — so costs **zero** additional Modbus traffic (a test pins: there
-  remain three read operations with 103 registers) — and is exact: it loses nothing while the
-  service is up, and it counts the later **battery discharge along** (that is the number that the
-  monitoring app calls "production", and it is fair: what the
-  inverter delivered is counted once). Proven live: over the same 3.5 minutes the meter rose by
-  **0.0200 kWh** and the app's AC integral by **0.0200 kWh** — identical. Lifetime reading
-  23.09: **29,267.336 kWh** (scale factor 0).
-* **Caution when comparing after a restart:** the integral is **continued** from the day file,
-  the meter start point only if the day file has one — directly after
-  a restart the two numbers can therefore cover **different windows**. Comparing
-  means: **deltas over the same window**, never the totals (the first look therefore showed
-  0.100 against 0.032 kWh and was not an error). A start point that was not set at midnight
-  is marked in the row as `se_partial`.
-* **Rule B is built — as a display with history** (2026-09-24): the forecast is set against the
-  **best complete day of the last 30**, threshold **90 %**; above it "car priority",
-  below it "battery priority". The reference comes from the plant's own measurement series, so that it grows with the
-  season (June ~52 kWh, September ~33.5 kWh). Both rules are **recorded daily
-  along**, the history later decides which was right. In the UI both are shown:
-  "forecast vs best day (30d)" and "rule B (season) would say". **It still controls nothing** —
-  the controller pin is unchanged green.
-* **Open (control, waiting for the collected days):** only wire it up when the history
-  confirms the rule. The estimated quantities of rule A (`house_reserve_kwh`, margin 1.3) remain
-  placeholders and will presumably not be needed for rule B.
+* **The whole PV forecast subsystem is gone - removed on the owner's instruction. Do not rebuild it.**
+  His reason, in one line: too complicated and too inaccurate for the few percent of efficiency it
+  was supposed to buy. Deleted: `evcharge/pv_forecast.py` (Open-Meteo per roof plane, the same-day
+  correction factor, both "who goes first" rules), `tests/test_pv_forecast.py`, the `forecast` config
+  block (which also clears the plant coordinates out of `config.json` and `config.example.json`), the
+  six UI rows with their JavaScript, and the day's production integral (AC/array/house/car/battery,
+  SOC range, the day and hourly CSV records). `main.py` alone went 1875 -> 1358 lines; the package
+  6953 -> 5503.
+  * **It steered nothing, and that was verified BEFORE the cut:** `evcharge/controller.py` contains no
+    forecast reference at all - its four grep hits are `cheap_hours`, `time`, `field` and a comment
+    about a "factor of three". So this was a display-and-history removal only.
+  * **`session_meter.py` was mistaken for a forecast user and is untouched.** Its `pv_kwh` is the
+    *garage* PV share from its own counter - a different quantity under a colliding name - so a
+    grep-and-delete on `pv_kwh` would have destroyed the SDM session meter.
+  * **What survived, deliberately small: the day counters.** The inverter's own lifetime AC counter as
+    the day's difference, plus the garage (Deye) counter beside it, one UI row ("inverter output
+    today / garage PV"), and `state["day"]` replacing `state["forecast"]`. Both are counter
+    differences, not integrals, so they cannot lose energy while the service is down, and the day
+    rolls over on the **house's** midnight (`_house_date`, `Europe/Berlin`) - the host runs UTC.
+  * **Verified:** all 12 suites green, `node --check` on the UI script, a real browser render (the six
+    forecast rows gone, the day-counter row present, zero occurrences of "forecast" on the page), and
+    the live service restarted 07:24:55 UTC with `NRestarts=0` and a working decision.
+  * The old forecast files stay on disk as history; nothing writes them any more.
+  * **Rollback:** `.backup-forecast-20261004/` in the project root holds `evcharge/`, `tests/` and both
+    config files exactly as they were before the cut. `ha-app` is not under git, so that folder is the
+    only way back.
 
 ## Recently fixed (2026-10-03)
 
@@ -1189,6 +1124,8 @@ itself.**
   **6-minute error unchanged:** 190 hits in the proxy log, still exactly every 6 minutes
   (03:16, 03:22). The pause and the app changes have changed nothing about it.
 * **FORECAST FACTOR: THE BATTERY CHARGE WAS MISSING (27.09., 16:00) — the most important finding of the day.**
+  *(Historical: the forecast was removed on 2026-10-04 — see "Recently fixed" at the top. Kept because
+  the signature it describes is what a future counter-based day figure must not repeat.)*
   Owner's note, verbatim: *„Wenn wir dabei Einspeichern in den Akku nicht berücksichtigen,
   dann wird unser Forecast bis 24:00 immer falsch sein"* (If we do not take charging into the battery into account, then our forecast until 24:00 will always be wrong). **He is right, and measurably so.**
   The factor compared **PV generation** (forecast) with the **inverter output** (AC integral).
@@ -1326,7 +1263,9 @@ itself.**
 * **The inverter is demonstrably read-only** — see the rule above: the unused
   battery write functions and the Modbus write primitives are out, structurally pinned,
   and the proxy still counts `upstream_writes: 0`.
-* **PV forecast step 1** built and live (see its own section above).
+* **PV forecast step 1** was built and live here — **and removed again on 2026-10-04** (see "Recently
+  fixed" at the top; the owner's call: too complicated and too inaccurate for the few percent it was
+  meant to buy). Do not rebuild it.
 
 ## Recently fixed (2026-09-22)
 
@@ -1526,7 +1465,8 @@ https to the HA connection.
 ```sh
 cd /home/adermake/EV-CHARGER-WT-HA/ha-app
 for t in test_safety test_controller test_phase_probe test_service_smoke test_proxy_card \
-         test_goe_driver test_ha_read test_site_cadence test_cheap_hours; do
+         test_goe_driver test_ha_read test_site_cadence test_cheap_hours \
+         test_mqtt_loopback test_session_meter test_solaredge_decode; do
   python3 tests/$t.py; done
 python3 /tmp/health.py                      # live situation in ~10 lines
 curl -s 127.0.0.1:7080/api/state            # the same situation as JSON
