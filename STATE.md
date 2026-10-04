@@ -434,10 +434,20 @@ itself.**
 * **The socket itself is verified.** Tuya `_TZ3000_gjnozsaz` / **TS011F**, IEEE
   `a4:c1:38:02:08:5c:ff:ff`, `device_id d5a254ad4af3f63eaf15f456ff1db999`. Measured with the kettle
   as load: **1971.0 W / 8.547 A** and **voltage 237 → 228 V** at the moment of
-  switching on (the inrush current pulls the line down). It calculates correctly. The question
-  connected with this is thereby answered: **the socket reports small load correctly**, below
-  its reporting threshold, however, a Fliegengrill (2–8 W) can remain at 0.0 W — for "is it
-  running?" the **switch state** is the reliable indication, not the power.
+  switching on (the inrush current pulls the line down). It calculates correctly.
+* **What the Fliegengrill really draws: 0.4 W** — settled on 2026-10-04 with a plug-in energy meter
+  (the trap plugged into it, its UV LEDs visibly lit, display 0.4 W on a 0.1 W scale). The label's
+  **6 W is a maximum, not the running draw** — reality is **15x lower**. All three consequences are
+  measured, not inferred:
+  * **The socket cannot show it.** Its reporting threshold lies above 6 W — 15x this load — so its
+    power entity legitimately reads 0.0 W; for "is it running?", the **switch state** is the reliable
+    indication, not the power. Ten minutes of continuous load produced not one single measurement.
+  * **A counter watch would not have caught it either.** The socket's kWh counter needs 10 Wh for one
+    step and the trap makes 2 Wh in a 5-hour night (0.2 steps), so a step takes ~5 nights. The daily
+    watchdog job was therefore removed again on 2026-10-04 — "nothing will come of it", and that is
+    now a measurement instead of a guess.
+  * **What it costs:** 2 Wh per night, **0.488 kWh per season** (April–November, 244 nights) =
+    **0.15 EUR** at 30 ct/kWh, about 0.06 ct per night.
 * **Renamed and filed** (`config/device_registry/update`, read back):
   device **"Fliegengrill"**, area **`wohnzimmer`** (to where "Steckdose Kühlschrank" sits).
   The 13 entities are now called "Fliegengrill Leistung / Spannung / Stromstärke / Summe
