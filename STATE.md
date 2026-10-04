@@ -435,19 +435,21 @@ itself.**
   `a4:c1:38:02:08:5c:ff:ff`, `device_id d5a254ad4af3f63eaf15f456ff1db999`. Measured with the kettle
   as load: **1971.0 W / 8.547 A** and **voltage 237 → 228 V** at the moment of
   switching on (the inrush current pulls the line down). It calculates correctly.
-* **What the Fliegengrill really draws: 0.4 W** — settled on 2026-10-04 with a plug-in energy meter
-  (the trap plugged into it, its UV LEDs visibly lit, display 0.4 W on a 0.1 W scale). The label's
-  **6 W is a maximum, not the running draw** — reality is **15x lower**. All three consequences are
-  measured, not inferred:
+* **What the Fliegengrill really draws: about 0.5 W** — settled on 2026-10-04 with a plug-in energy
+  meter (the trap plugged into it, its UV LEDs visibly lit). Its display **fluctuates between 0.1 and
+  1.1 W** on a 0.1 W scale, so the honest figure is an average of roughly **0.5 W** over time rather
+  than one frozen reading — say the range and the average, never a third digit of precision. The
+  label's **6 W is a maximum, not the running draw**: more than an order of magnitude too high. All
+  three consequences are measured, not inferred:
   * **The socket cannot show it.** Its reporting threshold lies above 6 W — 15x this load — so its
     power entity legitimately reads 0.0 W; for "is it running?", the **switch state** is the reliable
     indication, not the power. Ten minutes of continuous load produced not one single measurement.
   * **A counter watch would not have caught it either.** The socket's kWh counter needs 10 Wh for one
-    step and the trap makes 2 Wh in a 5-hour night (0.2 steps), so a step takes ~5 nights. The daily
+    step and the trap makes ~2.5 Wh in a 5-hour night (0.25 steps), so a step takes about 4 nights. The daily
     watchdog job was therefore removed again on 2026-10-04 — "nothing will come of it", and that is
     now a measurement instead of a guess.
-  * **What it costs:** 2 Wh per night, **0.488 kWh per season** (April–November, 244 nights) =
-    **0.15 EUR** at 30 ct/kWh, about 0.06 ct per night.
+  * **What it costs:** ~2.5 Wh per night, **0.61 kWh per season** (April–November, 244 nights) =
+    **0.18 EUR** at 30 ct/kWh, about 0.07 ct per night — and it runs inside the cheap-tariff window.
 * **Renamed and filed** (`config/device_registry/update`, read back):
   device **"Fliegengrill"**, area **`wohnzimmer`** (to where "Steckdose Kühlschrank" sits).
   The 13 entities are now called "Fliegengrill Leistung / Spannung / Stromstärke / Summe
