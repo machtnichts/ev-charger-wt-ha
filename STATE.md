@@ -205,6 +205,13 @@ is never believed.
     today / garage PV"), and `state["day"]` replacing `state["forecast"]`. Both are counter
     differences, not integrals, so they cannot lose energy while the service is down, and the day
     rolls over on the **house's** midnight (`_house_date`, `Europe/Berlin`) - the host runs UTC.
+  * **A restart must not restart the day.** The cut had dropped exactly that: the baseline is now
+    persisted in `logs/day_counters.json` whenever it is latched and resumed on start when it
+    belongs to the same house day - verified live across a restart (log: `day counter resumed
+    from disk: baseline 29494.984 kWh lifetime`; the figure kept running instead of resetting).
+    Without the file the first start after the cut re-latched mid-day and the row read 0.0, which
+    is how the regression was caught. The **garage** baseline is still memory-only and re-latches
+    with its partial-day marker - pre-existing documented behaviour, deliberately left alone.
   * **Verified:** all 12 suites green, `node --check` on the UI script, a real browser render (the six
     forecast rows gone, the day-counter row present, zero occurrences of "forecast" on the page), and
     the live service restarted 07:24:55 UTC with `NRestarts=0` and a working decision.
