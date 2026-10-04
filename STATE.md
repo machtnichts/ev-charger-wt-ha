@@ -209,6 +209,13 @@ is never believed.
     forecast rows gone, the day-counter row present, zero occurrences of "forecast" on the page), and
     the live service restarted 07:24:55 UTC with `NRestarts=0` and a working decision.
   * The old forecast files stay on disk as history; nothing writes them any more.
+  * **UI: the "surplus" row is now labelled "available"** (the owner's word). The reason line can read
+    "no surplus" while that number is large, because the phrase is keyed to *export* (> 50 W, see
+    `_surplus_phrase`) and the figure is the car's own draw plus the battery's intake - so the row now
+    says what the number is, with a tooltip spelling it out. The field `surplus_w`, the MQTT entity
+    `ev_surplus` ("PV surplus for EV") and the log lines keep their names: those are the API surface.
+    **Still open:** the third phrase variant reads "roof covers N W" although N includes the battery's
+    intake and can therefore exceed what the roof actually makes (measured 3078 W against 2861 W DC).
   * **Rollback:** `.backup-forecast-20261004/` in the project root holds `evcharge/`, `tests/` and both
     config files exactly as they were before the cut. `ha-app` is not under git, so that folder is the
     only way back.
