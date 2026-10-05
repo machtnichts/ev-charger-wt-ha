@@ -211,11 +211,33 @@ is never believed.
   588 W). The battery is then carrying the **house**, not the car. Not yet changed - it needs a wording
   decision.
 
+* **The DC side is PARALLEL, not a chain - the official SolarEdge diagram is the authority.** The owner
+  sent SolarEdge's own "PV-Anlage mit DC-gekoppelter Speicherung" picture: the PV array and the battery
+  both hang on a **DC bus** which feeds the inverter ("only one DC-AC conversion is needed"). His words:
+  *"Ja, parallel, keine Kette"*. The card is drawn that way: PV above, battery below, both on a short
+  vertical DC bus, then the inverter, then the AC line with car / house / grid and the garage array
+  feeding in as a second AC source.
+  * **A chain would misstate the physics.** With PV 3 kW and the battery charging 0.6 kW, a chain
+    "PV -> battery -> inverter" implies everything passes through the battery; in reality the battery
+    draws only its share off the bus. The two numbers that really exist are the array's production
+    (`pv_power_w`) and the inverter's DC input (`pv + discharge - charge`); their difference is what the
+    battery took or gave. Measured 19:2x: PV -66 W, DC input 574 W, battery discharging 640 W
+    (-66 + 640 = 574 exactly).
+  * **An SVG in a narrow card is unreadable and the overflow is measurable.** Values are 25 px (23 now),
+    so `discharging 0.64 kW` measured **288 SVG units against a 182-unit box** and ran across the whole
+    picture. The fix is always the same: short value, direction in the sub-line, then measure
+    (`element.getBoundingClientRect().width / (svgWidth/viewBoxWidth)`) and require **0 overflows** -
+    never eyeball it, and never trust a per-character estimate for the wrong font size.
+
 ## Recently fixed (2026-10-05)
 
 * **Energy flow card: every producer and every consumer at once.** The owner asked for the picture his
   SolarEdge app draws, "but with car and Deye *in addition*". One card, six tiles: SE roof (the
   inverter's AC output), garage (Deye, from Home Assistant, with its age), car, house, house battery
+  **CORRECTION (same day): that label was wrong.** `inverter_ac_w` is the inverter's AC output, not
+  the roof - in the evening it is battery energy, and calling it "SE roof" turned a battery
+  discharge into apparent solar production. The roof's own production is `pv_power_w` (the driver
+  adds the battery back, because the vendor DC register is the inverter's DC BUS).
   (charge/discharge + SOC) and the grid (import/export), plus "producing now" and a balance line.
   * **The AC node, stated once:** SolarEdge AC output + garage + grid = car + house. The house battery
     is *shown* but never added a second time - it sits behind the SolarEdge, so its contribution is
