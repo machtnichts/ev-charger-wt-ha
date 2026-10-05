@@ -184,6 +184,33 @@ is never believed.
 * **House time is not host time**: The host runs UTC, desired wall-clock times are expressed
   in `Europe/Berlin` (`Settings.timezone`, IANA name, daylight-saving-safe).
 
+* **The flow card is an SVG diagram now** - the owner asked for the SolarEdge app's picture, "but with
+  car and Deye in addition". Producers on top, a "producing now" node, a bus bar, then car / house /
+  battery / grid below, with **animated dashed lines that fade in and out with the live figure** and
+  an arrowhead giving the direction. Pure SVG inside `UI_HTML`, updated by attributes only - no DOM
+  building in JavaScript.
+  * **A graphic in a narrow card is unreadable, and the scale is not guessable.** First render: the
+    card was **297 px** wide (the board is a 4-column grid), so the 700-unit viewBox scaled to **0.38**
+    and the labels came out at **5 px**. Fix: the card takes `grid-column:1/-1` and the SVG is capped
+    at `max-width:780px`, centred → scale 1.11, value 28 px, title 16 px. Measure the rendered scale
+    (`svg.getBoundingClientRect().width / viewBox.width`) instead of assuming it: the same SVG is
+    legible or useless depending on the container it lands in.
+  * **Two bugs that only the render showed:** the SE roof's feed line had never been switched on (it
+    sat at `opacity:0`, so the picture looked disconnected), and a leftover "producing now" row printed
+    a bare `-` because its element had lived in the removed tiles.
+  * Lines are switched by the same numbers the tiles showed: car > 50 W, house > 50 W, battery charge
+    or discharge > 50 W, grid import or export > 50 W, garage > 30 W. A zero flow is **absent**, not
+    drawn at zero width - an arrow that is always there says nothing.
+* **The garage day baseline is persisted too.** It used to be memory-only, so every restart reset that
+  day's figure to 0.00 - which became obvious today because the flow-card work restarted the service
+  four times. It now rides in the same `logs/day_counters.json` as the inverter's baseline and is
+  restored with it. (Today it still reads `0.00*`: the baseline was re-latched several times before
+  this fix landed. From the next midnight it is a whole day and survives restarts.)
+* **Open observation on the wording:** the second phrase variant says "battery carrying the car" while
+  the car is *not* drawing (measured 18:56: `available -571 W`, car 0.00 kW, battery discharging
+  588 W). The battery is then carrying the **house**, not the car. Not yet changed - it needs a wording
+  decision.
+
 ## Recently fixed (2026-10-05)
 
 * **Energy flow card: every producer and every consumer at once.** The owner asked for the picture his
