@@ -299,6 +299,21 @@ is never believed.
   looks too short, measure the gap between the two nodes it may span and use all of it - do not shrink
   the arrowhead.
 
+* **A steady negative PV reading after dark is a LOAD, not noise.** I called the array's ~-60 W after
+  sunset measurement noise; the owner corrected it: *"Das ist kein rauschen sondern vermutlich
+  Wirkungsgrad des inverters bei keiner auslastung"*. He is right and the test is cheap - **noise
+  straddles zero, a real draw does not**. 15 samples over 2.5 minutes (read from the app's cached
+  state, so the inverter is not polled extra): `-54.2 / -58.7 (x6) / -60.6 (x6) / -56.1`, mean
+  **-58.8 W**, never once positive. The loss chain closes: battery feeds 565 W, the DC bus carries
+  506 W (59 W stay in the inverter), the bus gives 506 W and the AC output is 498.7 W - a constant
+  **1.5 %** conversion loss, i.e. ~66 W off ~500 W = 13 % at roughly a tenth of nominal load, exactly
+  where an inverter is at its worst.
+  * Use the zero-crossing test before calling any figure noise: count the sign changes over a few
+    minutes. A tight one-sided band is a physical cause; a scatter around zero is a measurement.
+  * Honest limit: a *constant* zero-offset in that register would also be stable, so these numbers
+    alone cannot separate a real standby draw from a fixed calibration error. The card is unaffected
+    either way (roof 0.00 kW, DC input correct); the wording says "steady draw", not "noise".
+
 ## Recently fixed (2026-10-05)
 
 * **Energy flow card: every producer and every consumer at once.** The owner asked for the picture his
