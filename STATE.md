@@ -291,6 +291,14 @@ is never believed.
     274 - so the canvas went to 900 units (card cap 900 px, scale 1.00) and both fit side by side
     under the line. Check the request as an arithmetic budget before moving anything.
 
+* **Arrow length is layout, and the free stretch decides it.** The owner: *"Der Pfeil aus dem inverter
+  heraus koennte laenger sein"*. The inverter's flow arrow was only 24 units because the house's tap
+  sits at x=515 - so it now uses the whole free stretch up to that tap (450 -> 508, **58 units**), and
+  the grid's import/export arrows got the stretch before the grid box (706 -> 754, **48** instead of
+  16). The AC line and its stub were merged into one wire in the process (9 wires -> 8). When an arrow
+  looks too short, measure the gap between the two nodes it may span and use all of it - do not shrink
+  the arrowhead.
+
 ## Recently fixed (2026-10-05)
 
 * **Energy flow card: every producer and every consumer at once.** The owner asked for the picture his
