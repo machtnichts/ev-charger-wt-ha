@@ -251,6 +251,19 @@ is never believed.
     the garage" is a reason to put them adjacent, and it is the reasoning that also carries the
     shortest cable.
 
+* **A riser that crosses a node box reads as if it leaves from that box.** The owner spotted it at
+  once: *"Der Pfeil inverter -> house geht aus der Mitte des inverters"*. The house's riser rose from
+  y=196 to the AC line at y=106 and the inverter box spans y 70..142 - so the line entered the box at
+  its bottom edge and the eye read it as an inverter output. The AC line now sits **below** the
+  inverter (y=158, box moved up to y 56..128), the inverter's output is a short riser from its bottom
+  edge, and the loads hang under the line. The garage pair keeps one continuous vertical line at
+  x=565, which is intended.
+  * **Check connectors against boxes as geometry, not by eye.** The rule "no line may intersect a
+    non-endpoint box" is a two-loop test over the SVG's own numbers and it found exactly the one
+    offending line (`x=343, y 106..196 through INVERTER 70..142`) that the owner then reported. It
+    runs in ~10 lines over the parsed SVG, next to the text-overflow and box-collision checks - all
+    three are cheap and all three have now caught a real defect.
+
 ## Recently fixed (2026-10-05)
 
 * **Energy flow card: every producer and every consumer at once.** The owner asked for the picture his
