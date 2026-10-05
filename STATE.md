@@ -1,6 +1,6 @@
 # EV-CHARGER-WT-HA — state, rules, open points
 
-As of: 2026-09-19. **Where there are contradictions, the code and the tests apply, not this file.**
+As of: 2026-10-05. **Where there are contradictions, the code and the tests apply, not this file.**
 This file is the handover: it says what is running, why it is so, what comes next.
 
 **Language rule, for this file and for everything else the project produces:** whatever language
@@ -183,6 +183,38 @@ is never believed.
   **wallbox** is written (current, enable, neutral position) — and only via the one write channel.
 * **House time is not host time**: The host runs UTC, desired wall-clock times are expressed
   in `Europe/Berlin` (`Settings.timezone`, IANA name, daylight-saving-safe).
+
+## Recently fixed (2026-10-05)
+
+* **Energy flow card: every producer and every consumer at once.** The owner asked for the picture his
+  SolarEdge app draws, "but with car and Deye *in addition*". One card, six tiles: SE roof (the
+  inverter's AC output), garage (Deye, from Home Assistant, with its age), car, house, house battery
+  (charge/discharge + SOC) and the grid (import/export), plus "producing now" and a balance line.
+  * **The AC node, stated once:** SolarEdge AC output + garage + grid = car + house. The house battery
+    is *shown* but never added a second time - it sits behind the SolarEdge, so its contribution is
+    already inside `inverter_ac_w`. That is exactly why the former forecast code could compute `house`
+    as `inverter_ac + grid - car` without a battery term of its own.
+  * **The residual is published, not hidden** (`state["flows"]["residual_w"]`, rendered as "adds up"
+    or as a warn-coloured "residual N kW"). It is the disagreement between the wallbox's own
+    measurement and the inverter's - a few hundred watts on this plant - and a flow picture that
+    always adds up would be lying about which of its numbers were measured.
+  * The SolarEdge app counts the **car as part of its "Ins Haus"**, so its figure is bigger than this
+    card's "house". Checked: SE "Ins Haus 2.97 kW" against car 2.67 + house 0.06 = 2.73 kW.
+  * Verified live: `producing 2.74 kW = SE 2.67 + garage 0.06`, car 2.67, house 0.06, battery charging
+    0.44 (99.3 %), grid exporting 0.01, "adds up".
+* **A layout bug found by RENDERING, and a CSS rule that was simply wrong.** The row
+  `inverter output today / garage PV` broke its VALUE one character per line
+  (`7. / 7 / 0 / k / W / h /  ...`): the old rule made the label unshrinkable
+  (`flex:0 0 auto; white-space:nowrap`) and the value breakable (`overflow-wrap:anywhere`), so a
+  34-character label in a 300 px card left the value no width at all. Now the **label gives way and the
+  value stays readable** (`flex:0 1 auto` on both, `overflow-wrap:break-word`, i.e. word level - a
+  number must never be broken in the middle). Measured after the fix: that row is 50 px instead of
+  ~230 px, and `imported / exported` wraps its label onto two lines with the value intact.
+  **This class of bug is invisible in the API - it only exists in a render.**
+* **The day counter is proven across a day boundary**: baseline latched at 29514.280 at
+  **2026-10-04 22:00:17 UTC = 00:00 Berlin**, resumed after the 09:55 restart, 7.646 kWh by midday -
+  which matches the SolarEdge app's own "Produktion heute". The `partial: false` is correct here
+  because the baseline really was taken at midnight.
 
 ## Recently fixed (2026-10-04)
 
