@@ -229,6 +229,17 @@ is never believed.
     (`element.getBoundingClientRect().width / (svgWidth/viewBoxWidth)`) and require **0 overflows** -
     never eyeball it, and never trust a per-character estimate for the wrong font size.
 
+* **The wiring is permanent, only the FLOW switches on and off.** The first version toggled whole
+  lines, so every connection with no current vanished - and at night most of them have none, leaving
+  "battery -> inverter -> house" as the only visible structure. The owner, who had just corrected the
+  topology, then saw a diagram with almost no topology in it. Every connection now has a permanent grey
+  `fwire` (9 of them) with the dashed, arrowed flow drawn on top of the same coordinates; the flow is
+  what appears and animates. **A diagram must stay readable when nothing flows** - that is the state
+  you look at it in most of the time.
+* **Two small number disciplines on that card:** the idle grid value was the only figure printed as
+  `0 kW` while every other box said `0.00 kW` (use the same formatter for the idle case), and the AC
+  line ended 70 units past the last tap, i.e. in mid-air.
+
 ## Recently fixed (2026-10-05)
 
 * **Energy flow card: every producer and every consumer at once.** The owner asked for the picture his
