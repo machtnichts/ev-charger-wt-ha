@@ -240,6 +240,17 @@ is never believed.
   `0 kW` while every other box said `0.00 kW` (use the same formatter for the idle case), and the AC
   line ended 70 units past the last tap, i.e. in mid-air.
 
+* **Nodes are grouped by where they physically sit.** The owner asked to put the car and the garage
+  array one above the other: *"die sind beide in der Garage sozusagen, und haben kuerzeste elektrische
+  Verbindung"*. They now share a single drop off the AC line - the Deye feeds in from above, the car
+  draws downwards, same x. Order on the AC line left to right: house (343), the garage pair (565),
+  grid (725, which is also where the line ends). The canvas grew to 800 units for this, and the card
+  cap to 820 px, so the Deye box clears the inverter; a rectangle-collision check over the seven boxes
+  reports 0 overlaps.
+  * **Draw the plant as the owner describes living in it**, not as a generic schematic: "both are in
+    the garage" is a reason to put them adjacent, and it is the reasoning that also carries the
+    shortest cable.
+
 ## Recently fixed (2026-10-05)
 
 * **Energy flow card: every producer and every consumer at once.** The owner asked for the picture his
