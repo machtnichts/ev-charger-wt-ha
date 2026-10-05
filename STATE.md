@@ -275,6 +275,22 @@ is never believed.
     findings, 0 box overlaps, 9 wires. Take the "more room" request as a number to raise, not a nudge:
     the arrow length is directly measurable after the change (32 -> 86).
 
+* **Follow the owner's sketch literally, and check the two things he complained about.** He drew it out:
+  PV ROOF top-left, Battery below-left, SE INV to their right, Deye PV top with a line falling through,
+  GRID right level with the inverter, HOUSE and CAR below. Two requirements came with it:
+  * **The inverter is OFFSET ("versetzt"): its top edge sits inside the PV row and its bottom edge
+    inside the battery row**, because the gap between PV and battery is smaller than the inverter's
+    height (PV 38..110, battery 150..222, inverter 94..166). That is why the DC bus is a short vertical
+    line on his left - PV from above, battery from below - while the AC leaves to the right.
+  * **Every load gets one straight vertical line onto the top of its box.** His own sketch had a bent
+    line into the house and he called it out: *"nicht so doof wie auf meinen bild beim house. Also house
+    noch weiter nach rechts, damit eine direkte Linie reicht"*. Both risers now land exactly on their
+    box centres (house x=515, car x=645) and the check asserts that equality rather than eyeballing it.
+  * **"More room between the inverter and the grid" is a width to measure**: the niche from the
+    inverter's right edge (448) to the grid (760) is 312 units, and the two 124-wide load boxes need
+    274 - so the canvas went to 900 units (card cap 900 px, scale 1.00) and both fit side by side
+    under the line. Check the request as an arithmetic budget before moving anything.
+
 ## Recently fixed (2026-10-05)
 
 * **Energy flow card: every producer and every consumer at once.** The owner asked for the picture his
