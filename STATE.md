@@ -264,6 +264,17 @@ is never believed.
     runs in ~10 lines over the parsed SVG, next to the text-overflow and box-collision checks - all
     three are cheap and all three have now caught a real defect.
 
+* **Height is a layout parameter, and the grid belongs level with its line.** The owner: *"Ich wuerde
+  aber noch gern das ganze in die Hoehe ziehen, damit die Pfeile nach unten mehr Platz haben, und grid
+  wuerde ich mittig zu seiner Linie Hochschieben"*. The canvas went 800x290 -> **800x380**, the AC line
+  down to y=200 and the consumers to y=290, which takes the downward arrows from **32 to 86 units**
+  (the garage's feed is 94). The inverter now sits with its centre on the line's height (y 164..236) so
+  it feeds sideways instead of from below, and the **grid is a box centred vertically on the AC line**
+  at its right end - fed from the side, like the meter and grid in the SolarEdge app.
+  * The three geometry checks (`text/box`, `box/box`, `line/box`) ran before the render again: 0
+    findings, 0 box overlaps, 9 wires. Take the "more room" request as a number to raise, not a nudge:
+    the arrow length is directly measurable after the change (32 -> 86).
+
 ## Recently fixed (2026-10-05)
 
 * **Energy flow card: every producer and every consumer at once.** The owner asked for the picture his
